@@ -350,7 +350,7 @@ async function dbxUpload(path, blob) {
     headers: {
       'Authorization':    'Bearer ' + dbxToken,
       'Content-Type':     'application/octet-stream',
-      'Dropbox-API-Arg':  JSON.stringify({ path, mode: 'overwrite', autorename: true }),
+      'Dropbox-API-Arg':  JSON.stringify({ path, mode: 'overwrite', autorename: true }).replace(/[^\x00-\x7F]/g, c => '\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4)),
     },
     body: blob,
   });
