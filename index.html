@@ -229,50 +229,61 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
 
 <script>
 // ============================================================
-//  App Key
-// ============================================================
 const DROPBOX_APP_KEY = 'c5xn5alzj04ola4';
 // ============================================================
+const DBX_ENABLED = !!DROPBOX_APP_KEY && DROPBOX_APP_KEY !== 'YOUR_APP_KEY_HERE';
 
-const DBX_ENABLED = DROPBOX_APP_KEY !== 'YOUR_APP_KEY_HERE';
-
-// ===== ストレージ helper（localStorage/sessionStorage 両対応）=====
+// ===== ストレージ helper =====
 function storageGet(key) {
   try { const v = localStorage.getItem(key); if (v !== null) return v; } catch(e) {}
-  try { return sessionStorage.getItem(key); } catch(e) {}
+  try { const v = sessionStorage.getItem(key); if (v !== null) return v; } catch(e) {}
+  try {
+    const m = document.cookie.match('(?:^|;)\\s*' + key + '=([^;]*)');
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch(e) {}
   return null;
 }
 function storageSet(key, val) {
-  try { localStorage.setItem(key, val); return; } catch(e) {}
-  try { sessionStorage.setItem(key, val); } catch(e) {}
+  let saved = false;
+  try { localStorage.setItem(key, val); saved = true; } catch(e) {}
+  try { sessionStorage.setItem(key, val); saved = true; } catch(e) {}
+  if (!saved) {
+    try {
+      const exp = new Date(Date.now() + 7*24*60*60*1000).toUTCString();
+      document.cookie = key + '=' + encodeURIComponent(val) + '; expires=' + exp + '; path=/; SameSite=Lax';
+    } catch(e) {}
+  }
 }
 function storageRemove(key) {
   try { localStorage.removeItem(key); } catch(e) {}
   try { sessionStorage.removeItem(key); } catch(e) {}
+  try { document.cookie = key + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'; } catch(e) {}
 }
 
 // ===== DROPBOX PKCE OAuth =====
-let dbxToken = storageGet('dbx_token') || null;
+let dbxToken        = storageGet('dbx_token')  || null;
+let dbxRefreshToken = storageGet('dbx_refresh') || null;
 let dbxPendingAction = null;
 
 function updateDbxBadge() {
-  const badge = $('dbx-badge');
-  if (dbxToken) {
+  const badge = document.getElementById('dbx-badge');
+  if (dbxToken || dbxRefreshToken) {
     badge.classList.add('connected');
-    $('dbx-badge-text').textContent = '☁ Dropbox 接続済';
+    document.getElementById('dbx-badge-text').textContent = '☁ Dropbox 接続済';
   } else {
     badge.classList.remove('connected');
-    $('dbx-badge-text').textContent = 'Dropbox 未接続';
+    document.getElementById('dbx-badge-text').textContent = 'Dropbox 未接続';
   }
 }
 
 async function dbxToggle() {
   if (!DBX_ENABLED) { showToast('先にApp Keyを設定してください', 'err'); return; }
-  if (dbxToken) {
+  if (dbxToken || dbxRefreshToken) {
     if (confirm('Dropboxの接続を切断しますか？')) {
       storageRemove('dbx_token');
+      storageRemove('dbx_refresh');
       storageRemove('dbx_pkce_verifier');
-      dbxToken = null;
+      dbxToken = null; dbxRefreshToken = null;
       updateDbxBadge();
       showToast('切断しました', 'inf');
     }
@@ -285,28 +296,31 @@ async function dbxStartAuth() {
   const verifier  = generateVerifier();
   const challenge = await generateChallenge(verifier);
   storageSet('dbx_pkce_verifier', verifier);
-  storageSet('dbx_return', 'auth');
-  const redirectUri = window.location.href.split('?')[0].split('#')[0];
+  const redirectUri = window.location.origin + window.location.pathname;
   const url = 'https://www.dropbox.com/oauth2/authorize?' + new URLSearchParams({
     client_id:             DROPBOX_APP_KEY,
     response_type:         'code',
     code_challenge:        challenge,
     code_challenge_method: 'S256',
     redirect_uri:          redirectUri,
-    token_access_type:     'online',
+    token_access_type:     'offline',
   });
   window.location.href = url;
 }
 
 async function dbxHandleCallback() {
-  const params   = new URLSearchParams(window.location.search);
-  const code     = params.get('code');
+  const params = new URLSearchParams(window.location.search);
+  const code   = params.get('code');
+  if (!code) return;
   const verifier = storageGet('dbx_pkce_verifier');
-  if (!code || !verifier) return;
-
+  if (!verifier) {
+    showToast('認証エラー: 再度サインインしてください。', 'err');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return;
+  }
   window.history.replaceState({}, document.title, window.location.pathname);
-
-  const redirectUri = window.location.href.split('?')[0].split('#')[0];
+  const redirectUri = window.location.origin + window.location.pathname;
+  showToast('Dropbox認証中…', 'inf');
   try {
     const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
       method: 'POST',
@@ -323,361 +337,375 @@ async function dbxHandleCallback() {
     if (data.access_token) {
       dbxToken = data.access_token;
       storageSet('dbx_token', dbxToken);
+      if (data.refresh_token) {
+        dbxRefreshToken = data.refresh_token;
+        storageSet('dbx_refresh', dbxRefreshToken);
+      }
       storageRemove('dbx_pkce_verifier');
-      storageRemove('dbx_return');
       updateDbxBadge();
       showToast('Dropboxに接続しました ✓', 'ok');
     } else {
-      showToast('認証失敗: ' + (data.error_description || data.error), 'err');
+      showToast('認証失敗: ' + (data.error_description || data.error || JSON.stringify(data)), 'err');
     }
-  } catch(e) { showToast('通信エラー: ' + e.message, 'err'); }
+  } catch(e) {
+    showToast('通信エラー: ' + e.message, 'err');
+  }
 }
 
 function generateVerifier() {
   const arr = new Uint8Array(32);
   crypto.getRandomValues(arr);
-  return btoa(String.fromCharCode(...arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  return btoa(String.fromCharCode.apply(null, arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
 async function generateChallenge(verifier) {
-  const data = new TextEncoder().encode(verifier);
+  const data   = new TextEncoder().encode(verifier);
   const digest = await crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  return btoa(String.fromCharCode.apply(null, new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
 
-async function dbxUpload(path, blob) {
-  const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
+async function dbxRefreshAccessToken() {
+  if (!dbxRefreshToken) return false;
+  try {
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type:    'refresh_token',
+        refresh_token: dbxRefreshToken,
+        client_id:     DROPBOX_APP_KEY,
+      }),
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      dbxToken = data.access_token;
+      storageSet('dbx_token', dbxToken);
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+function encodeDropboxArg(obj) {
+  return JSON.stringify(obj).replace(/[^\x20-\x7E]/g, function(c) {
+    var code = c.charCodeAt(0);
+    return '\\u' + ('0000' + code.toString(16)).slice(-4);
+  });
+}
+
+async function dbxUpload(path, blob, retry) {
+  if (retry === undefined) retry = true;
+  var arg = encodeDropboxArg({ path: path, mode: 'overwrite', autorename: true });
+  var res = await fetch('https://content.dropboxapi.com/2/files/upload', {
     method: 'POST',
     headers: {
-      'Authorization':    'Bearer ' + dbxToken,
-      'Content-Type':     'application/octet-stream',
-      'Dropbox-API-Arg':  JSON.stringify({ path, mode: 'overwrite', autorename: true }).replace(/[^\x00-\x7F]/g, c => '\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4)),
+      'Authorization':   'Bearer ' + dbxToken,
+      'Content-Type':    'application/octet-stream',
+      'Dropbox-API-Arg': arg,
     },
     body: blob,
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    if (res.status === 401) {
+    var err = await res.json().catch(function(){ return {}; });
+    if (res.status === 401 && retry) {
+      var ok = await dbxRefreshAccessToken();
+      if (ok) return dbxUpload(path, blob, false);
       storageRemove('dbx_token');
-      dbxToken = null; updateDbxBadge();
+      storageRemove('dbx_refresh');
+      dbxToken = null; dbxRefreshToken = null; updateDbxBadge();
       throw new Error('認証期限切れ。再度サインインしてください。');
     }
     throw new Error(err.error_summary || res.statusText);
   }
-  return await res.json();
+  return res.json();
 }
 
 function openDbxModal(action) {
   if (!DBX_ENABLED) { showToast('先にApp Keyを設定してください', 'err'); return; }
-  if (!dbxToken)    { showToast('先にDropboxに接続してください', 'inf'); dbxStartAuth(); return; }
+  if (!dbxToken && !dbxRefreshToken) { showToast('先にDropboxに接続してください', 'inf'); dbxStartAuth(); return; }
   dbxPendingAction = action;
-  $('dbx-modal-bg').classList.remove('hidden');
+  document.getElementById('dbx-modal-bg').classList.remove('hidden');
 }
-function closeDbxModal() { $('dbx-modal-bg').classList.add('hidden'); dbxPendingAction = null; }
+function closeDbxModal() {
+  document.getElementById('dbx-modal-bg').classList.add('hidden');
+  dbxPendingAction = null;
+}
 
-$('btn-dbx-confirm').onclick = async () => {
-  const folder = $('dbx-folder-input').value.trim().replace(/^\/|\/$/g,'') || '配筋写真';
+document.getElementById('btn-dbx-confirm').onclick = async function() {
+  var folder = document.getElementById('dbx-folder-input').value.trim().replace(/^\/|\/$/g,'') || '配筋写真';
   closeDbxModal();
   if (!dbxPendingAction) return;
 
+  if (!dbxToken) {
+    var ok = await dbxRefreshAccessToken();
+    if (!ok) { showToast('再認証が必要です。Dropboxボタンをクリックしてください。', 'err'); return; }
+  }
+
   if (dbxPendingAction.type === 'single') {
-    const photo = photos.find(p => p.id === dbxPendingAction.id);
+    var photo = photos.find(function(p){ return p.id === dbxPendingAction.id; });
     showProgress('アップロード中…', 0);
     try {
-      const canvas = await renderToCanvas(photo);
-      const blob   = await canvasToBlob(canvas);
-      const fname  = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
-      await dbxUpload(`/${folder}/${fname}`, blob);
+      var canvas = await renderToCanvas(photo);
+      var blob   = await canvasToBlob(canvas);
+      var fname  = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
+      await dbxUpload('/' + folder + '/' + fname, blob);
       hideProgress();
       showToast('Dropboxに保存しました ✓', 'ok');
     } catch(e) { hideProgress(); showToast('保存失敗: ' + e.message, 'err'); }
 
   } else if (dbxPendingAction.type === 'bulk') {
-    const targets = photos.filter(p => dbxPendingAction.ids.includes(p.id));
-    let ok = 0;
-    showProgress(`0 / ${targets.length} 枚`, 0);
-    for (const photo of targets) {
+    var targets = photos.filter(function(p){ return dbxPendingAction.ids.indexOf(p.id) !== -1; });
+    var okCount = 0;
+    showProgress('0 / ' + targets.length + ' 枚', 0);
+    for (var i = 0; i < targets.length; i++) {
       try {
-        const canvas = await renderToCanvas(photo);
-        const blob   = await canvasToBlob(canvas);
-        const fname  = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
-        await dbxUpload(`/${folder}/${fname}`, blob);
-        ok++;
-        showProgress(`${ok} / ${targets.length} 枚完了`, ok / targets.length * 100);
+        var canvas = await renderToCanvas(targets[i]);
+        var blob   = await canvasToBlob(canvas);
+        var fname  = 'marked_' + targets[i].name.replace(/\.[^.]+$/, '') + '.jpg';
+        await dbxUpload('/' + folder + '/' + fname, blob);
+        okCount++;
+        showProgress(okCount + ' / ' + targets.length + ' 枚完了', okCount / targets.length * 100);
       } catch(e) { showToast('エラー: ' + e.message, 'err'); }
     }
     hideProgress();
-    showToast(`${ok} / ${targets.length} 枚をDropboxに保存しました ✓`, 'ok');
+    showToast(okCount + ' / ' + targets.length + ' 枚をDropboxに保存しました ✓', 'ok');
   }
 };
 
 function showProgress(label, pct) {
-  $('progress-wrap').classList.add('show');
-  $('progress-label').textContent = label;
-  $('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-wrap').classList.add('show');
+  document.getElementById('progress-label').textContent = label;
+  document.getElementById('progress-bar').style.width = pct + '%';
 }
-function hideProgress() { $('progress-wrap').classList.remove('show'); }
-
-function canvasToBlob(canvas) {
-  return new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
-}
+function hideProgress() { document.getElementById('progress-wrap').classList.remove('show'); }
+function canvasToBlob(canvas) { return new Promise(function(r){ canvas.toBlob(r, 'image/jpeg', 0.95); }); }
 
 // ===== APP STATE =====
-const COLORS = ['#FF6B00','#FFD600','#00C853','#2979FF','#E040FB','#FF1744'];
-let photos = [], selectedPhotoIds = new Set(), currentPhotoId = null;
-let currentMode = 'add', currentColor = COLORS[0], currentShowLabel = true;
-let currentSize = 50, currentOpacity = 100, selectedMarkerId = null;
-let imgNaturalW = 0, imgNaturalH = 0;
-
-const uid = () => Math.random().toString(36).substr(2, 9);
-function $(id) { return document.getElementById(id); }
-
-function showView(n) { ['upload','gallery','editor'].forEach(v => $('view-'+v).classList.remove('active')); $('view-'+n).classList.add('active'); }
+var COLORS = ['#FF6B00','#FFD600','#00C853','#2979FF','#E040FB','#FF1744'];
+var photos = [], selectedPhotoIds = new Set(), currentPhotoId = null;
+var currentMode = 'add', currentColor = COLORS[0], currentShowLabel = true;
+var currentSize = 50, currentOpacity = 100, selectedMarkerId = null;
+var imgNaturalW = 0, imgNaturalH = 0;
+function uid(){ return Math.random().toString(36).substr(2,9); }
+function $(id){ return document.getElementById(id); }
+function showView(n){ ['upload','gallery','editor'].forEach(function(v){ $('view-'+v).classList.remove('active'); }); $('view-'+n).classList.add('active'); }
 
 function loadFiles(files) {
-  const imgs = Array.from(files).filter(f => f.type.startsWith('image/')); if (!imgs.length) return;
-  let loaded = 0;
-  imgs.forEach(f => {
-    const r = new FileReader();
-    r.onload = e => { photos.push({id:uid(),name:f.name,url:e.target.result,markers:[]}); if(++loaded===imgs.length){showView('gallery');renderGallery();} };
+  var imgs = Array.from(files).filter(function(f){ return f.type.startsWith('image/'); });
+  if (!imgs.length) return;
+  var loaded = 0;
+  imgs.forEach(function(f){
+    var r = new FileReader();
+    r.onload = function(e){ photos.push({id:uid(),name:f.name,url:e.target.result,markers:[]}); if(++loaded===imgs.length){showView('gallery');renderGallery();} };
     r.readAsDataURL(f);
   });
 }
-$('btn-add-photos').onclick = () => $('file-input').click();
-$('file-input').onchange = e => { loadFiles(e.target.files); $('file-input').value=''; };
-$('drop-zone').onclick = () => $('file-input').click();
-['dragover','dragenter'].forEach(ev => document.addEventListener(ev, e=>{e.preventDefault();$('drop-zone').classList.add('drag-over');}));
-['dragleave','drop'].forEach(ev => document.addEventListener(ev, e=>{e.preventDefault();$('drop-zone').classList.remove('drag-over');if(ev==='drop')loadFiles(e.dataTransfer.files);}));
+$('btn-add-photos').onclick = function(){ $('file-input').click(); };
+$('file-input').onchange    = function(e){ loadFiles(e.target.files); $('file-input').value=''; };
+$('drop-zone').onclick      = function(){ $('file-input').click(); };
+['dragover','dragenter'].forEach(function(ev){ document.addEventListener(ev, function(e){ e.preventDefault(); $('drop-zone').classList.add('drag-over'); }); });
+['dragleave','drop'].forEach(function(ev){ document.addEventListener(ev, function(e){ e.preventDefault(); $('drop-zone').classList.remove('drag-over'); if(ev==='drop') loadFiles(e.dataTransfer.files); }); });
 
 function renderGallery() {
   $('stat-total').textContent    = photos.length;
   $('stat-selected').textContent = selectedPhotoIds.size;
-  $('stat-markers').textContent  = photos.reduce((s,p)=>s+p.markers.length,0);
+  $('stat-markers').textContent  = photos.reduce(function(s,p){ return s+p.markers.length; }, 0);
   $('btn-select-all').style.display = photos.length ? '' : 'none';
-  $('btn-select-all').textContent   = (selectedPhotoIds.size===photos.length&&photos.length)?'全解除':'全選択';
-
-  const actBar = $('gallery-actions');
-  if (selectedPhotoIds.size > 0) {
-    actBar.classList.remove('hidden');
-    $('gallery-sel-label').textContent = selectedPhotoIds.size + '枚選択中';
-  } else {
-    actBar.classList.add('hidden');
-  }
-
+  $('btn-select-all').textContent   = (selectedPhotoIds.size===photos.length&&photos.length) ? '全解除' : '全選択';
+  var actBar = $('gallery-actions');
+  if (selectedPhotoIds.size > 0) { actBar.classList.remove('hidden'); $('gallery-sel-label').textContent = selectedPhotoIds.size + '枚選択中'; }
+  else actBar.classList.add('hidden');
   $('gallery-grid').innerHTML = '';
-  photos.forEach(photo => {
-    const sel  = selectedPhotoIds.has(photo.id);
-    const card = document.createElement('div');
-    card.className = 'photo-card'+(sel?' selected':'');
-    card.innerHTML = `
-      <div class="card-checkbox${sel?' checked':''}" data-id="${photo.id}">${sel?'✓':''}</div>
-      <div class="card-del" data-del="${photo.id}">×</div>
-      <img class="card-thumb" src="${photo.url}" data-edit="${photo.id}">
-      <div class="card-info">
-        <div class="card-name" title="${photo.name}">${photo.name}</div>
-        <div class="card-markers">マーカー ${photo.markers.length}個</div>
-      </div>
-      <button class="btn btn-primary card-edit-btn" data-edit="${photo.id}">編集</button>`;
+  photos.forEach(function(photo){
+    var sel  = selectedPhotoIds.has(photo.id);
+    var card = document.createElement('div');
+    card.className = 'photo-card' + (sel ? ' selected' : '');
+    card.innerHTML = '<div class="card-checkbox' + (sel?' checked':'') + '" data-id="' + photo.id + '">' + (sel?'✓':'') + '</div>' +
+      '<div class="card-del" data-del="' + photo.id + '">×</div>' +
+      '<img class="card-thumb" src="' + photo.url + '" data-edit="' + photo.id + '">' +
+      '<div class="card-info"><div class="card-name" title="' + photo.name + '">' + photo.name + '</div>' +
+      '<div class="card-markers">マーカー ' + photo.markers.length + '個</div></div>' +
+      '<button class="btn btn-primary card-edit-btn" data-edit="' + photo.id + '">編集</button>';
     $('gallery-grid').appendChild(card);
   });
-  $('gallery-grid').querySelectorAll('[data-edit]').forEach(el => el.addEventListener('click', ()=>openEditor(el.dataset.edit)));
-  $('gallery-grid').querySelectorAll('[data-del]').forEach(el  => el.addEventListener('click', e=>{e.stopPropagation();deletePhoto(el.dataset.del);}));
-  $('gallery-grid').querySelectorAll('[data-id]').forEach(el   => el.addEventListener('click', e=>{e.stopPropagation();toggleSelect(el.dataset.id);}));
+  $('gallery-grid').querySelectorAll('[data-edit]').forEach(function(el){ el.addEventListener('click', function(){ openEditor(el.dataset.edit); }); });
+  $('gallery-grid').querySelectorAll('[data-del]').forEach(function(el){ el.addEventListener('click', function(e){ e.stopPropagation(); deletePhoto(el.dataset.del); }); });
+  $('gallery-grid').querySelectorAll('[data-id]').forEach(function(el){ el.addEventListener('click', function(e){ e.stopPropagation(); toggleSelect(el.dataset.id); }); });
   if (!photos.length) showView('upload');
 }
-function deletePhoto(id) { photos=photos.filter(p=>p.id!==id); selectedPhotoIds.delete(id); renderGallery(); }
-function toggleSelect(id) { selectedPhotoIds.has(id)?selectedPhotoIds.delete(id):selectedPhotoIds.add(id); renderGallery(); }
-$('btn-select-all').onclick = () => { selectedPhotoIds.size===photos.length?selectedPhotoIds.clear():photos.forEach(p=>selectedPhotoIds.add(p.id)); renderGallery(); };
-$('btn-bulk-dl2').onclick  = () => bulkDownload();
-$('btn-bulk-dbx').onclick  = () => openDbxModal({ type:'bulk', ids:[...selectedPhotoIds] });
+function deletePhoto(id){ photos=photos.filter(function(p){ return p.id!==id; }); selectedPhotoIds.delete(id); renderGallery(); }
+function toggleSelect(id){ selectedPhotoIds.has(id)?selectedPhotoIds.delete(id):selectedPhotoIds.add(id); renderGallery(); }
+$('btn-select-all').onclick = function(){ selectedPhotoIds.size===photos.length ? selectedPhotoIds.clear() : photos.forEach(function(p){ selectedPhotoIds.add(p.id); }); renderGallery(); };
+$('btn-bulk-dl2').onclick   = function(){ bulkDownload(); };
+$('btn-bulk-dbx').onclick   = function(){ openDbxModal({type:'bulk', ids:[...selectedPhotoIds]}); };
 
-const swatchWrap = $('color-swatches');
-COLORS.forEach(c => {
-  const sw = document.createElement('div');
-  sw.className='color-swatch'+(c===currentColor?' active':''); sw.style.background=c; sw.style.setProperty('--c',c);
-  sw.onclick=()=>{ currentColor=c; swatchWrap.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active')); sw.classList.add('active'); };
+var swatchWrap = $('color-swatches');
+COLORS.forEach(function(c){
+  var sw = document.createElement('div');
+  sw.className = 'color-swatch' + (c===currentColor?' active':'');
+  sw.style.background = c; sw.style.setProperty('--c', c);
+  sw.onclick = function(){ currentColor=c; swatchWrap.querySelectorAll('.color-swatch').forEach(function(s){ s.classList.remove('active'); }); sw.classList.add('active'); };
   swatchWrap.appendChild(sw);
 });
-
-$('toggle-label').onclick = () => {
-  currentShowLabel = !currentShowLabel;
-  $('toggle-label').classList.toggle('on', currentShowLabel);
-  $('toggle-label-text').textContent = currentShowLabel ? '番号あり' : '番号なし';
-};
-
-$('slider-size').oninput    = () => { currentSize=+$('slider-size').value; $('val-size').textContent=currentSize; };
-$('slider-opacity').oninput = () => { currentOpacity=+$('slider-opacity').value; $('val-opacity').textContent=currentOpacity+'%'; };
+$('toggle-label').onclick   = function(){ currentShowLabel=!currentShowLabel; $('toggle-label').classList.toggle('on',currentShowLabel); $('toggle-label-text').textContent=currentShowLabel?'番号あり':'番号なし'; };
+$('slider-size').oninput    = function(){ currentSize=+$('slider-size').value; $('val-size').textContent=currentSize; };
+$('slider-opacity').oninput = function(){ currentOpacity=+$('slider-opacity').value; $('val-opacity').textContent=currentOpacity+'%'; };
 
 function openEditor(id) {
   currentPhotoId=id; selectedMarkerId=null;
-  const photo=photos.find(p=>p.id===id);
+  var photo=photos.find(function(p){ return p.id===id; });
   $('editor-filename').textContent=photo.name;
-  $('editor-img').onload=()=>{ imgNaturalW=$('editor-img').naturalWidth; imgNaturalH=$('editor-img').naturalHeight; renderMarkers(); };
+  $('editor-img').onload=function(){ imgNaturalW=$('editor-img').naturalWidth; imgNaturalH=$('editor-img').naturalHeight; renderMarkers(); };
   $('editor-img').src=photo.url;
-  const maxN=photo.markers.reduce((m,mk)=>{const n=parseInt(mk.label);return isNaN(n)?m:Math.max(m,n);},0);
+  var maxN=photo.markers.reduce(function(m,mk){ var n=parseInt(mk.label); return isNaN(n)?m:Math.max(m,n); },0);
   $('label-input').value=String(maxN+1);
   setMode('add'); showView('editor');
 }
-$('btn-back').onclick=()=>{ showView('gallery'); renderGallery(); };
-function setMode(m) {
-  currentMode=m;
-  $('btn-mode-add').classList.toggle('active',m==='add');
-  $('btn-mode-select').classList.toggle('active',m==='select');
-  $('editor-canvas-wrap').style.cursor=m==='add'?'crosshair':'default';
-  if(m==='select'){selectedMarkerId=null;renderMarkers();}
-}
-$('btn-mode-add').onclick    = ()=>setMode('add');
-$('btn-mode-select').onclick = ()=>setMode('select');
+$('btn-back').onclick=function(){ showView('gallery'); renderGallery(); };
+function setMode(m){ currentMode=m; $('btn-mode-add').classList.toggle('active',m==='add'); $('btn-mode-select').classList.toggle('active',m==='select'); $('editor-canvas-wrap').style.cursor=m==='add'?'crosshair':'default'; if(m==='select'){selectedMarkerId=null;renderMarkers();} }
+$('btn-mode-add').onclick    = function(){ setMode('add'); };
+$('btn-mode-select').onclick = function(){ setMode('select'); };
 
 function addMarker(cx,cy) {
-  const rect=$('editor-img').getBoundingClientRect();
-  const x=(cx-rect.left)*(imgNaturalW/rect.width), y=(cy-rect.top)*(imgNaturalH/rect.height);
-  const lbl=$('label-input').value.trim()||'1';
-  const photo=photos.find(p=>p.id===currentPhotoId);
-  const mk={id:uid(),x,y,label:lbl,color:currentColor,showLabel:currentShowLabel,size:currentSize,opacity:currentOpacity};
+  var rect=$('editor-img').getBoundingClientRect();
+  var x=(cx-rect.left)*(imgNaturalW/rect.width), y=(cy-rect.top)*(imgNaturalH/rect.height);
+  var lbl=$('label-input').value.trim()||'1';
+  var photo=photos.find(function(p){ return p.id===currentPhotoId; });
+  var mk={id:uid(),x:x,y:y,label:lbl,color:currentColor,showLabel:currentShowLabel,size:currentSize,opacity:currentOpacity};
   photo.markers.push(mk);
-  const n=parseInt(lbl); if(!isNaN(n)) $('label-input').value=String(n+1);
+  var n=parseInt(lbl); if(!isNaN(n)) $('label-input').value=String(n+1);
   selectedMarkerId=mk.id; renderMarkers();
 }
-$('editor-canvas-wrap').addEventListener('click', e=>{
-  if(currentMode!=='add'||e.target.closest('.marker-dot')||e.target.closest('.prop-panel')) return;
-  addMarker(e.clientX,e.clientY);
-});
-$('editor-canvas-wrap').addEventListener('touchend', e=>{
-  if(currentMode!=='add'||e.target.closest('.marker-dot')||e.target.closest('.prop-panel')) return;
-  e.preventDefault(); const t=e.changedTouches[0]; addMarker(t.clientX,t.clientY);
-},{passive:false});
-$('editor-canvas-wrap').addEventListener('click', e=>{
-  if(currentMode!=='select') return;
-  if(!e.target.closest('.marker-dot')&&!e.target.closest('.prop-panel')){selectedMarkerId=null;renderMarkers();}
-});
+$('editor-canvas-wrap').addEventListener('click', function(e){ if(currentMode!=='add'||e.target.closest('.marker-dot')||e.target.closest('.prop-panel')) return; addMarker(e.clientX,e.clientY); });
+$('editor-canvas-wrap').addEventListener('touchend', function(e){ if(currentMode!=='add'||e.target.closest('.marker-dot')||e.target.closest('.prop-panel')) return; e.preventDefault(); var t=e.changedTouches[0]; addMarker(t.clientX,t.clientY); },{passive:false});
+$('editor-canvas-wrap').addEventListener('click', function(e){ if(currentMode!=='select') return; if(!e.target.closest('.marker-dot')&&!e.target.closest('.prop-panel')){selectedMarkerId=null;renderMarkers();} });
 
 function renderMarkers() {
-  const photo=photos.find(p=>p.id===currentPhotoId); if(!photo) return;
+  var photo=photos.find(function(p){ return p.id===currentPhotoId; }); if(!photo) return;
   $('marker-layer').innerHTML='';
-  $('marker-count-badge').textContent=`マーカー: ${photo.markers.length}個`;
-  const rect=$('editor-img').getBoundingClientRect();
-  const dW=rect.width||$('editor-img').offsetWidth, dH=rect.height||$('editor-img').offsetHeight;
-  const sX=imgNaturalW>0?dW/imgNaturalW:1, sY=imgNaturalH>0?dH/imgNaturalH:1, base=Math.min(dW,dH);
-  photo.markers.forEach(mk=>{
-    const sel=mk.id===selectedMarkerId;
-    const sp=Math.max(16,((mk.size??50)/100)*base*0.14), fs=Math.max(9,sp*0.42), op=(mk.opacity??100)/100;
-    const showLbl=mk.showLabel!==false;
-    const dot=document.createElement('div');
-    dot.className='marker-dot'+(sel?' selected':'');
-    dot.style.cssText=`left:${mk.x*sX}px;top:${mk.y*sY}px;width:${sp}px;height:${sp}px;background:${mk.color};font-size:${fs}px;opacity:${op};box-shadow:${sel?`0 0 0 3px ${mk.color},0 4px 16px rgba(0,0,0,0.5)`:'0 2px 8px rgba(0,0,0,0.35)'};`;
+  $('marker-count-badge').textContent='マーカー: '+photo.markers.length+'個';
+  var rect=$('editor-img').getBoundingClientRect();
+  var dW=rect.width||$('editor-img').offsetWidth, dH=rect.height||$('editor-img').offsetHeight;
+  var sX=imgNaturalW>0?dW/imgNaturalW:1, sY=imgNaturalH>0?dH/imgNaturalH:1, base=Math.min(dW,dH);
+  photo.markers.forEach(function(mk){
+    var sel=mk.id===selectedMarkerId;
+    var sp=Math.max(16,((mk.size!=null?mk.size:50)/100)*base*0.14), fs=Math.max(9,sp*0.42), op=(mk.opacity!=null?mk.opacity:100)/100;
+    var showLbl=mk.showLabel!==false;
+    var dot=document.createElement('div'); dot.className='marker-dot'+(sel?' selected':'');
+    dot.style.cssText='left:'+mk.x*sX+'px;top:'+mk.y*sY+'px;width:'+sp+'px;height:'+sp+'px;background:'+mk.color+';font-size:'+fs+'px;opacity:'+op+';box-shadow:'+(sel?'0 0 0 3px '+mk.color+',0 4px 16px rgba(0,0,0,0.5)':'0 2px 8px rgba(0,0,0,0.35)')+';';
     dot.textContent=showLbl?mk.label:'';
-    if(sel){const db=document.createElement('div');db.className='marker-del-btn';db.textContent='×';db.style.opacity='1';db.onclick=e=>{e.stopPropagation();deleteMarker(mk.id);};dot.appendChild(db);}
-    dot.onclick=e=>{e.stopPropagation();if(currentMode==='add')return;selectedMarkerId=selectedMarkerId===mk.id?null:mk.id;renderMarkers();};
+    if(sel){ var db=document.createElement('div'); db.className='marker-del-btn'; db.textContent='×'; db.style.opacity='1'; db.onclick=function(e){ e.stopPropagation(); deleteMarker(mk.id); }; dot.appendChild(db); }
+    dot.onclick=function(e){ e.stopPropagation(); if(currentMode==='add') return; selectedMarkerId=selectedMarkerId===mk.id?null:mk.id; renderMarkers(); };
     $('marker-layer').appendChild(dot);
     if(sel){
-      const panel=document.createElement('div'); panel.className='prop-panel';
-      const px=mk.x*sX, py=mk.y*sY, below=py<dH*0.72;
+      var panel=document.createElement('div'); panel.className='prop-panel';
+      var px=mk.x*sX, py=mk.y*sY, below=py<dH*0.72;
       panel.style.left=px+'px';
       if(below) panel.style.top=(py+sp/2+10)+'px'; else panel.style.bottom=(dH-py+sp/2+10)+'px';
-      panel.onclick=e=>e.stopPropagation();
-      panel.appendChild(makePropSlider('サイズ',mk.size??50,20,120,5,v=>{mk.size=v;renderMarkers();}));
-      panel.appendChild(makePropSlider('透明度',mk.opacity??100,10,100,5,v=>{mk.opacity=v;renderMarkers();},v=>v+'%'));
-      const lr=document.createElement('div');lr.className='prop-row';
-      const ck=document.createElement('input');ck.type='checkbox';ck.checked=showLbl;ck.onchange=()=>{mk.showLabel=ck.checked;renderMarkers();};
-      const lt=document.createElement('span');lt.textContent='番号を表示する';
-      lr.appendChild(ck);lr.appendChild(lt);panel.appendChild(lr);
+      panel.onclick=function(e){ e.stopPropagation(); };
+      panel.appendChild(makePropSlider('サイズ',mk.size!=null?mk.size:50,20,120,5,function(v){ mk.size=v; renderMarkers(); }));
+      panel.appendChild(makePropSlider('透明度',mk.opacity!=null?mk.opacity:100,10,100,5,function(v){ mk.opacity=v; renderMarkers(); },function(v){ return v+'%'; }));
+      var lr=document.createElement('div'); lr.className='prop-row';
+      var ck=document.createElement('input'); ck.type='checkbox'; ck.checked=showLbl; ck.onchange=function(){ mk.showLabel=ck.checked; renderMarkers(); };
+      var lt=document.createElement('span'); lt.textContent='番号を表示する';
+      lr.appendChild(ck); lr.appendChild(lt); panel.appendChild(lr);
       $('marker-layer').appendChild(panel);
     }
   });
 }
 function makePropSlider(label,init,min,max,step,onChange,fmt){
-  const row=document.createElement('div');row.className='prop-row';
-  const lb=document.createElement('span');lb.className='lbl';lb.textContent=label;
-  const sl=document.createElement('input');sl.type='range';sl.min=min;sl.max=max;sl.step=step;sl.value=init;
-  const vl=document.createElement('span');vl.className='vl';vl.textContent=fmt?fmt(init):init;
-  sl.oninput=()=>{const v=+sl.value;vl.textContent=fmt?fmt(v):v;onChange(v);};
-  row.appendChild(lb);row.appendChild(sl);row.appendChild(vl);return row;
+  var row=document.createElement('div'); row.className='prop-row';
+  var lb=document.createElement('span'); lb.className='lbl'; lb.textContent=label;
+  var sl=document.createElement('input'); sl.type='range'; sl.min=min; sl.max=max; sl.step=step; sl.value=init;
+  var vl=document.createElement('span'); vl.className='vl'; vl.textContent=fmt?fmt(init):init;
+  sl.oninput=function(){ var v=+sl.value; vl.textContent=fmt?fmt(v):v; onChange(v); };
+  row.appendChild(lb); row.appendChild(sl); row.appendChild(vl); return row;
 }
-function deleteMarker(id){const photo=photos.find(p=>p.id===currentPhotoId);photo.markers=photo.markers.filter(m=>m.id!==id);selectedMarkerId=null;renderMarkers();}
-window.addEventListener('resize',()=>{if(currentPhotoId)renderMarkers();});
+function deleteMarker(id){ var photo=photos.find(function(p){ return p.id===currentPhotoId; }); photo.markers=photo.markers.filter(function(m){ return m.id!==id; }); selectedMarkerId=null; renderMarkers(); }
+window.addEventListener('resize', function(){ if(currentPhotoId) renderMarkers(); });
 
-// ===== RENDER TO CANVAS =====
 function renderToCanvas(photo) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const cv = document.createElement('canvas');
-      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-      const ctx = cv.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const base = Math.min(img.naturalWidth, img.naturalHeight);
-      photo.markers.forEach(mk => {
-        const sp = Math.max(16, ((mk.size??50)/100)*base*0.14);
-        const fs = Math.max(9, sp*0.42);
-        const op = (mk.opacity??100)/100;
-        const showLbl = mk.showLabel !== false;
-        ctx.save();
-        ctx.globalAlpha = op;
-        ctx.fillStyle = mk.color;
-        ctx.beginPath();
-        ctx.arc(mk.x, mk.y, sp/2, 0, Math.PI*2);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-        ctx.lineWidth = 2.5;
-        ctx.stroke();
-        if (showLbl) {
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    img.onload = function(){
+      try {
+        var cv = document.createElement('canvas');
+        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+        var ctx = cv.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        var base = Math.min(img.naturalWidth, img.naturalHeight);
+        photo.markers.forEach(function(mk){
+          var sp = Math.max(16, ((mk.size!=null?mk.size:50)/100)*base*0.14);
+          var fs = Math.max(9, sp*0.42);
+          var op = (mk.opacity!=null?mk.opacity:100)/100;
+          var showLbl = mk.showLabel !== false;
+          ctx.save();
           ctx.globalAlpha = op;
-          ctx.fillStyle = '#fff';
-          ctx.font = `700 ${fs}px "DM Mono", monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.shadowColor = 'rgba(0,0,0,0.8)';
-          ctx.shadowBlur = 4;
-          ctx.fillText(mk.label, mk.x, mk.y);
-        }
-        ctx.restore();
-      });
-      resolve(cv);
+          ctx.fillStyle = mk.color;
+          ctx.beginPath();
+          ctx.arc(mk.x, mk.y, sp/2, 0, Math.PI*2);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+          if (showLbl) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '700 ' + fs + 'px "DM Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 4;
+            ctx.fillText(mk.label, mk.x, mk.y);
+          }
+          ctx.restore();
+        });
+        resolve(cv);
+      } catch(e) {
+        reject(e);
+      }
     };
+    img.onerror = function(){ reject(new Error('画像の読み込みに失敗しました')); };
     img.src = photo.url;
   });
 }
 
-// ===== DOWNLOAD =====
 async function downloadPhoto(photo) {
-  const canvas = await renderToCanvas(photo);
-  const a = document.createElement('a');
+  var canvas = await renderToCanvas(photo);
+  var a = document.createElement('a');
   a.href = canvas.toDataURL('image/jpeg', 0.95);
   a.download = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
   a.click();
 }
-
 async function bulkDownload() {
-  const targets = photos.filter(p => selectedPhotoIds.has(p.id));
+  var targets = photos.filter(function(p){ return selectedPhotoIds.has(p.id); });
   if (!targets.length) return;
   if (targets.length === 1) { await downloadPhoto(targets[0]); return; }
-  const zip = new JSZip();
-  showProgress(`0 / ${targets.length} 枚`, 0);
-  for (let i = 0; i < targets.length; i++) {
-    const canvas = await renderToCanvas(targets[i]);
-    const blob   = await canvasToBlob(canvas);
+  var zip = new JSZip();
+  showProgress('0 / ' + targets.length + ' 枚', 0);
+  for (var i = 0; i < targets.length; i++) {
+    var canvas = await renderToCanvas(targets[i]);
+    var blob   = await canvasToBlob(canvas);
     zip.file('marked_' + targets[i].name.replace(/\.[^.]+$/, '') + '.jpg', blob);
-    showProgress(`${i+1} / ${targets.length} 枚`, (i+1)/targets.length*100);
+    showProgress((i+1) + ' / ' + targets.length + ' 枚', (i+1)/targets.length*100);
   }
-  const zipBlob = await zip.generateAsync({type:'blob'});
-  const a = document.createElement('a');
+  var zipBlob = await zip.generateAsync({type:'blob'});
+  var a = document.createElement('a');
   a.href = URL.createObjectURL(zipBlob);
   a.download = '配筋写真_' + Date.now() + '.zip';
   a.click();
   hideProgress();
 }
 
-$('btn-dbx-save').onclick  = () => openDbxModal({ type:'single', id:currentPhotoId });
-$('btn-download').onclick  = () => { const p=photos.find(x=>x.id===currentPhotoId); if(p) downloadPhoto(p); };
+$('btn-dbx-save').onclick = function(){ openDbxModal({type:'single', id:currentPhotoId}); };
+$('btn-download').onclick = function(){ var p=photos.find(function(x){ return x.id===currentPhotoId; }); if(p) downloadPhoto(p); };
 
-// ===== TOAST =====
-let toastTimer = null;
-function showToast(msg, type='inf') {
-  const t = $('toast');
+var toastTimer = null;
+function showToast(msg, type) {
+  if (!type) type = 'inf';
+  var t = $('toast');
   t.textContent = msg;
-  t.className = `show ${type}`;
+  t.className = 'show ' + type;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = type; }, 3000);
+  toastTimer = setTimeout(function(){ t.className = type; }, 3500);
 }
 
 // ===== INIT =====
