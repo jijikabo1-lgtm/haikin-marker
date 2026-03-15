@@ -233,23 +233,22 @@ const DROPBOX_APP_KEY = 'c5xn5alzj04ola4';
 // ============================================================
 const DBX_ENABLED = !!DROPBOX_APP_KEY && DROPBOX_APP_KEY !== 'YOUR_APP_KEY_HERE';
 
-// ===== ストレージ helper =====
 function storageGet(key) {
-  try { const v = localStorage.getItem(key); if (v !== null) return v; } catch(e) {}
-  try { const v = sessionStorage.getItem(key); if (v !== null) return v; } catch(e) {}
+  try { var v = localStorage.getItem(key); if (v !== null) return v; } catch(e) {}
+  try { var v = sessionStorage.getItem(key); if (v !== null) return v; } catch(e) {}
   try {
-    const m = document.cookie.match('(?:^|;)\\s*' + key + '=([^;]*)');
+    var m = document.cookie.match('(?:^|;)\\s*' + key + '=([^;]*)');
     return m ? decodeURIComponent(m[1]) : null;
   } catch(e) {}
   return null;
 }
 function storageSet(key, val) {
-  let saved = false;
+  var saved = false;
   try { localStorage.setItem(key, val); saved = true; } catch(e) {}
   try { sessionStorage.setItem(key, val); saved = true; } catch(e) {}
   if (!saved) {
     try {
-      const exp = new Date(Date.now() + 7*24*60*60*1000).toUTCString();
+      var exp = new Date(Date.now() + 7*24*60*60*1000).toUTCString();
       document.cookie = key + '=' + encodeURIComponent(val) + '; expires=' + exp + '; path=/; SameSite=Lax';
     } catch(e) {}
   }
@@ -260,13 +259,12 @@ function storageRemove(key) {
   try { document.cookie = key + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'; } catch(e) {}
 }
 
-// ===== DROPBOX PKCE OAuth =====
-let dbxToken        = storageGet('dbx_token')  || null;
-let dbxRefreshToken = storageGet('dbx_refresh') || null;
-let dbxPendingAction = null;
+var dbxToken        = storageGet('dbx_token')  || null;
+var dbxRefreshToken = storageGet('dbx_refresh') || null;
+var dbxPendingAction = null;
 
 function updateDbxBadge() {
-  const badge = document.getElementById('dbx-badge');
+  var badge = document.getElementById('dbx-badge');
   if (dbxToken || dbxRefreshToken) {
     badge.classList.add('connected');
     document.getElementById('dbx-badge-text').textContent = '☁ Dropbox 接続済';
@@ -293,11 +291,11 @@ async function dbxToggle() {
 }
 
 async function dbxStartAuth() {
-  const verifier  = generateVerifier();
-  const challenge = await generateChallenge(verifier);
+  var verifier  = generateVerifier();
+  var challenge = await generateChallenge(verifier);
   storageSet('dbx_pkce_verifier', verifier);
-  const redirectUri = window.location.origin + window.location.pathname;
-  const url = 'https://www.dropbox.com/oauth2/authorize?' + new URLSearchParams({
+  var redirectUri = window.location.origin + window.location.pathname;
+  var url = 'https://www.dropbox.com/oauth2/authorize?' + new URLSearchParams({
     client_id:             DROPBOX_APP_KEY,
     response_type:         'code',
     code_challenge:        challenge,
@@ -309,31 +307,31 @@ async function dbxStartAuth() {
 }
 
 async function dbxHandleCallback() {
-  const params = new URLSearchParams(window.location.search);
-  const code   = params.get('code');
+  var params = new URLSearchParams(window.location.search);
+  var code   = params.get('code');
   if (!code) return;
-  const verifier = storageGet('dbx_pkce_verifier');
+  var verifier = storageGet('dbx_pkce_verifier');
   if (!verifier) {
     showToast('認証エラー: 再度サインインしてください。', 'err');
     window.history.replaceState({}, document.title, window.location.pathname);
     return;
   }
   window.history.replaceState({}, document.title, window.location.pathname);
-  const redirectUri = window.location.origin + window.location.pathname;
+  var redirectUri = window.location.origin + window.location.pathname;
   showToast('Dropbox認証中…', 'inf');
   try {
-    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+    var res = await fetch('https://api.dropboxapi.com/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        code,
+        code:          code,
         grant_type:    'authorization_code',
         code_verifier: verifier,
         client_id:     DROPBOX_APP_KEY,
         redirect_uri:  redirectUri,
       }),
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.access_token) {
       dbxToken = data.access_token;
       storageSet('dbx_token', dbxToken);
@@ -353,20 +351,20 @@ async function dbxHandleCallback() {
 }
 
 function generateVerifier() {
-  const arr = new Uint8Array(32);
+  var arr = new Uint8Array(32);
   crypto.getRandomValues(arr);
   return btoa(String.fromCharCode.apply(null, arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
 async function generateChallenge(verifier) {
-  const data   = new TextEncoder().encode(verifier);
-  const digest = await crypto.subtle.digest('SHA-256', data);
+  var data   = new TextEncoder().encode(verifier);
+  var digest = await crypto.subtle.digest('SHA-256', data);
   return btoa(String.fromCharCode.apply(null, new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
 
 async function dbxRefreshAccessToken() {
   if (!dbxRefreshToken) return false;
   try {
-    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+    var res = await fetch('https://api.dropboxapi.com/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -375,7 +373,7 @@ async function dbxRefreshAccessToken() {
         client_id:     DROPBOX_APP_KEY,
       }),
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.access_token) {
       dbxToken = data.access_token;
       storageSet('dbx_token', dbxToken);
@@ -432,16 +430,18 @@ function closeDbxModal() {
 
 document.getElementById('btn-dbx-confirm').onclick = async function() {
   var folder = document.getElementById('dbx-folder-input').value.trim().replace(/^\/|\/$/g,'') || '配筋写真';
-  closeDbxModal();
-  if (!dbxPendingAction) return;
+  var action = dbxPendingAction;  // ★先にactionに保存
+  closeDbxModal();                // ★その後モーダルを閉じる
+  if (!action) return;
 
   if (!dbxToken) {
     var ok = await dbxRefreshAccessToken();
     if (!ok) { showToast('再認証が必要です。Dropboxボタンをクリックしてください。', 'err'); return; }
   }
 
-  if (dbxPendingAction.type === 'single') {
-    var photo = photos.find(function(p){ return p.id === dbxPendingAction.id; });
+  if (action.type === 'single') {
+    var photo = photos.find(function(p){ return p.id === action.id; });
+    if (!photo) { showToast('写真が見つかりません', 'err'); return; }
     showProgress('アップロード中…', 0);
     try {
       var canvas = await renderToCanvas(photo);
@@ -452,8 +452,8 @@ document.getElementById('btn-dbx-confirm').onclick = async function() {
       showToast('Dropboxに保存しました ✓', 'ok');
     } catch(e) { hideProgress(); showToast('保存失敗: ' + e.message, 'err'); }
 
-  } else if (dbxPendingAction.type === 'bulk') {
-    var targets = photos.filter(function(p){ return dbxPendingAction.ids.indexOf(p.id) !== -1; });
+  } else if (action.type === 'bulk') {
+    var targets = photos.filter(function(p){ return action.ids.indexOf(p.id) !== -1; });
     var okCount = 0;
     showProgress('0 / ' + targets.length + ' 枚', 0);
     for (var i = 0; i < targets.length; i++) {
@@ -479,7 +479,6 @@ function showProgress(label, pct) {
 function hideProgress() { document.getElementById('progress-wrap').classList.remove('show'); }
 function canvasToBlob(canvas) { return new Promise(function(r){ canvas.toBlob(r, 'image/jpeg', 0.95); }); }
 
-// ===== APP STATE =====
 var COLORS = ['#FF6B00','#FFD600','#00C853','#2979FF','#E040FB','#FF1744'];
 var photos = [], selectedPhotoIds = new Set(), currentPhotoId = null;
 var currentMode = 'add', currentColor = COLORS[0], currentShowLabel = true;
@@ -708,7 +707,6 @@ function showToast(msg, type) {
   toastTimer = setTimeout(function(){ t.className = type; }, 3500);
 }
 
-// ===== INIT =====
 updateDbxBadge();
 dbxHandleCallback();
 </script>
