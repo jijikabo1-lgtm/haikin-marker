@@ -60,8 +60,10 @@ input, select { font-family: 'DM Mono', monospace; }
 #gallery-actions { display:flex; gap:8px; padding:8px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; align-items:center; }
 #gallery-actions.hidden { display:none; }
 #gallery-actions span { font-size:12px; color:#8B8FA8; }
-#editor-topbar { display:flex; align-items:center; gap:10px; padding:10px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; }
-#editor-filename { color:#8B8FA8; font-size:12px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#editor-topbar { display:flex; align-items:center; gap:8px; padding:10px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; }
+#editor-filename { color:#8B8FA8; font-size:12px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+#editor-nav { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+#editor-nav-counter { font-size:11px; color:#555; white-space:nowrap; min-width:48px; text-align:center; }
 #editor-toolbar { background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; }
 .toolbar-row { display:flex; align-items:center; gap:10px; padding:8px 14px; flex-wrap:wrap; }
 .toolbar-row + .toolbar-row { border-top:1px solid #1E2130; }
@@ -168,6 +170,12 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
   <div id="editor-topbar">
     <button class="btn btn-secondary" id="btn-back">← 戻る</button>
     <span id="editor-filename"></span>
+    <!-- ★前へ・次へナビゲーション -->
+    <div id="editor-nav">
+      <button class="btn btn-secondary" id="btn-prev">◀ 前へ</button>
+      <span id="editor-nav-counter">1 / 1</span>
+      <button class="btn btn-secondary" id="btn-next">次へ ▶</button>
+    </div>
     <button class="btn btn-dbx"     id="btn-dbx-save">☁ Dropboxに保存</button>
     <button class="btn btn-primary" id="btn-download">↓ DL</button>
   </div>
@@ -233,7 +241,7 @@ const DROPBOX_APP_KEY = 'c5xn5alzj04ola4';
 // ============================================================
 const DBX_ENABLED = !!DROPBOX_APP_KEY && DROPBOX_APP_KEY !== 'YOUR_APP_KEY_HERE';
 
-/* ── ストレージヘルパー (localStorage → sessionStorage → Cookie フォールバック) ── */
+/* ── ストレージヘルパー ── */
 function storageGet(key) {
   try { var v = localStorage.getItem(key); if (v !== null) return v; } catch(e) {}
   try { var v = sessionStorage.getItem(key); if (v !== null) return v; } catch(e) {}
@@ -279,16 +287,11 @@ async function dbxToggle() {
   if (!DBX_ENABLED) { showToast('先にApp Keyを設定してください', 'err'); return; }
   if (dbxToken || dbxRefreshToken) {
     if (confirm('Dropboxの接続を切断しますか？')) {
-      storageRemove('dbx_token');
-      storageRemove('dbx_refresh');
-      storageRemove('dbx_pkce_verifier');
+      storageRemove('dbx_token'); storageRemove('dbx_refresh'); storageRemove('dbx_pkce_verifier');
       dbxToken = null; dbxRefreshToken = null;
-      updateDbxBadge();
-      showToast('切断しました', 'inf');
+      updateDbxBadge(); showToast('切断しました', 'inf');
     }
-  } else {
-    await dbxStartAuth();
-  }
+  } else { await dbxStartAuth(); }
 }
 
 async function dbxStartAuth() {
@@ -297,12 +300,9 @@ async function dbxStartAuth() {
   storageSet('dbx_pkce_verifier', verifier);
   var redirectUri = window.location.origin + window.location.pathname;
   var url = 'https://www.dropbox.com/oauth2/authorize?' + new URLSearchParams({
-    client_id:             DROPBOX_APP_KEY,
-    response_type:         'code',
-    code_challenge:        challenge,
-    code_challenge_method: 'S256',
-    redirect_uri:          redirectUri,
-    token_access_type:     'offline',
+    client_id: DROPBOX_APP_KEY, response_type: 'code',
+    code_challenge: challenge, code_challenge_method: 'S256',
+    redirect_uri: redirectUri, token_access_type: 'offline',
   });
   window.location.href = url;
 }
@@ -312,52 +312,30 @@ async function dbxHandleCallback() {
   var code   = params.get('code');
   if (!code) return;
   var verifier = storageGet('dbx_pkce_verifier');
-  if (!verifier) {
-    showToast('認証エラー: 再度サインインしてください。', 'err');
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return;
-  }
+  if (!verifier) { showToast('認証エラー: 再度サインインしてください。', 'err'); window.history.replaceState({}, document.title, window.location.pathname); return; }
   window.history.replaceState({}, document.title, window.location.pathname);
   var redirectUri = window.location.origin + window.location.pathname;
   showToast('Dropbox認証中…', 'inf');
   try {
-    var res = await fetch('https://api.dropboxapi.com/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code:          code,
-        grant_type:    'authorization_code',
-        code_verifier: verifier,
-        client_id:     DROPBOX_APP_KEY,
-        redirect_uri:  redirectUri,
-      }),
+    var res  = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, grant_type: 'authorization_code', code_verifier: verifier, client_id: DROPBOX_APP_KEY, redirect_uri: redirectUri }),
     });
     var data = await res.json();
     if (data.access_token) {
-      dbxToken = data.access_token;
-      storageSet('dbx_token', dbxToken);
-      if (data.refresh_token) {
-        dbxRefreshToken = data.refresh_token;
-        storageSet('dbx_refresh', dbxRefreshToken);
-      }
-      storageRemove('dbx_pkce_verifier');
-      updateDbxBadge();
-      showToast('Dropboxに接続しました ✓', 'ok');
-    } else {
-      showToast('認証失敗: ' + (data.error_description || data.error || JSON.stringify(data)), 'err');
-    }
-  } catch(e) {
-    showToast('通信エラー: ' + e.message, 'err');
-  }
+      dbxToken = data.access_token; storageSet('dbx_token', dbxToken);
+      if (data.refresh_token) { dbxRefreshToken = data.refresh_token; storageSet('dbx_refresh', dbxRefreshToken); }
+      storageRemove('dbx_pkce_verifier'); updateDbxBadge(); showToast('Dropboxに接続しました ✓', 'ok');
+    } else { showToast('認証失敗: ' + (data.error_description || data.error || JSON.stringify(data)), 'err'); }
+  } catch(e) { showToast('通信エラー: ' + e.message, 'err'); }
 }
 
 function generateVerifier() {
-  var arr = new Uint8Array(32);
-  crypto.getRandomValues(arr);
+  var arr = new Uint8Array(32); crypto.getRandomValues(arr);
   return btoa(String.fromCharCode.apply(null, arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
 async function generateChallenge(verifier) {
-  var data   = new TextEncoder().encode(verifier);
+  var data = new TextEncoder().encode(verifier);
   var digest = await crypto.subtle.digest('SHA-256', data);
   return btoa(String.fromCharCode.apply(null, new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
@@ -365,26 +343,16 @@ async function generateChallenge(verifier) {
 async function dbxRefreshAccessToken() {
   if (!dbxRefreshToken) return false;
   try {
-    var res = await fetch('https://api.dropboxapi.com/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type:    'refresh_token',
-        refresh_token: dbxRefreshToken,
-        client_id:     DROPBOX_APP_KEY,
-      }),
+    var res  = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: dbxRefreshToken, client_id: DROPBOX_APP_KEY }),
     });
     var data = await res.json();
-    if (data.access_token) {
-      dbxToken = data.access_token;
-      storageSet('dbx_token', dbxToken);
-      return true;
-    }
+    if (data.access_token) { dbxToken = data.access_token; storageSet('dbx_token', dbxToken); return true; }
   } catch(e) {}
   return false;
 }
 
-/* ── Dropbox-API-Arg ヘッダー用 非ASCII文字エスケープ ── */
 function encodeDropboxArg(obj) {
   return JSON.stringify(obj).replace(/[^\x20-\x7E]/g, function(c) {
     return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
@@ -396,11 +364,7 @@ async function dbxUpload(path, blob, retry) {
   var arg = encodeDropboxArg({ path: path, mode: 'overwrite', autorename: true });
   var res = await fetch('https://content.dropboxapi.com/2/files/upload', {
     method: 'POST',
-    headers: {
-      'Authorization':   'Bearer ' + dbxToken,
-      'Content-Type':    'application/octet-stream',
-      'Dropbox-API-Arg': arg,
-    },
+    headers: { 'Authorization': 'Bearer ' + dbxToken, 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': arg },
     body: blob,
   });
   if (!res.ok) {
@@ -408,8 +372,7 @@ async function dbxUpload(path, blob, retry) {
     if (res.status === 401 && retry) {
       var ok = await dbxRefreshAccessToken();
       if (ok) return dbxUpload(path, blob, false);
-      storageRemove('dbx_token');
-      storageRemove('dbx_refresh');
+      storageRemove('dbx_token'); storageRemove('dbx_refresh');
       dbxToken = null; dbxRefreshToken = null; updateDbxBadge();
       throw new Error('認証期限切れ。再度サインインしてください。');
     }
@@ -431,15 +394,13 @@ function closeDbxModal() {
 
 document.getElementById('btn-dbx-confirm').onclick = async function() {
   var folder = document.getElementById('dbx-folder-input').value.trim().replace(/^\/|\/$/g,'') || '配筋写真';
-  var action = dbxPendingAction;   // ★先にローカル変数へ退避
-  closeDbxModal();                  // ★退避後にモーダルを閉じる (dbxPendingAction=nullになるが問題なし)
+  var action = dbxPendingAction;
+  closeDbxModal();
   if (!action) return;
-
   if (!dbxToken) {
     var ok = await dbxRefreshAccessToken();
     if (!ok) { showToast('再認証が必要です。Dropboxボタンをクリックしてください。', 'err'); return; }
   }
-
   if (action.type === 'single') {
     var photo = photos.find(function(p){ return p.id === action.id; });
     if (!photo) { showToast('写真が見つかりません', 'err'); return; }
@@ -449,14 +410,8 @@ document.getElementById('btn-dbx-confirm').onclick = async function() {
       var blob   = await canvasToBlob(canvas);
       var fname  = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
       await dbxUpload('/' + folder + '/' + fname, blob);
-      hideProgress();
-      showToast('Dropboxに保存しました ✓', 'ok');
-    } catch(e) {
-      hideProgress();
-      showToast('保存失敗: ' + e.message, 'err');
-      console.error('Dropbox保存エラー:', e);
-    }
-
+      hideProgress(); showToast('Dropboxに保存しました ✓', 'ok');
+    } catch(e) { hideProgress(); showToast('保存失敗: ' + e.message, 'err'); console.error(e); }
   } else if (action.type === 'bulk') {
     var targets = photos.filter(function(p){ return action.ids.indexOf(p.id) !== -1; });
     var okCount = 0;
@@ -469,10 +424,7 @@ document.getElementById('btn-dbx-confirm').onclick = async function() {
         await dbxUpload('/' + folder + '/' + fname, blob);
         okCount++;
         showProgress(okCount + ' / ' + targets.length + ' 枚完了', okCount / targets.length * 100);
-      } catch(e) {
-        console.error('一括保存エラー:', e);
-        showToast('エラー: ' + e.message, 'err');
-      }
+      } catch(e) { console.error(e); showToast('エラー: ' + e.message, 'err'); }
     }
     hideProgress();
     showToast(okCount + ' / ' + targets.length + ' 枚をDropboxに保存しました ✓', 'ok');
@@ -560,17 +512,43 @@ $('slider-size').oninput    = function(){ currentSize=+$('slider-size').value; $
 $('slider-opacity').oninput = function(){ currentOpacity=+$('slider-opacity').value; $('val-opacity').textContent=currentOpacity+'%'; };
 
 /* ── エディタ ── */
-function openEditor(id) {
-  currentPhotoId=id; selectedMarkerId=null;
-  var photo=photos.find(function(p){ return p.id===id; });
-  $('editor-filename').textContent=photo.name;
-  $('editor-img').onload=function(){ imgNaturalW=$('editor-img').naturalWidth; imgNaturalH=$('editor-img').naturalHeight; renderMarkers(); };
-  $('editor-img').src=photo.url;
-  var maxN=photo.markers.reduce(function(m,mk){ var n=parseInt(mk.label); return isNaN(n)?m:Math.max(m,n); },0);
-  $('label-input').value=String(maxN+1);
-  setMode('add'); showView('editor');
+
+/* ★ 前へ・次へナビゲーション更新 */
+function updateNavButtons() {
+  var idx = photos.findIndex(function(p){ return p.id === currentPhotoId; });
+  var total = photos.length;
+  $('editor-nav-counter').textContent = (idx + 1) + ' / ' + total;
+  $('btn-prev').disabled = (idx <= 0);
+  $('btn-next').disabled = (idx >= total - 1);
 }
-$('btn-back').onclick=function(){ showView('gallery'); renderGallery(); };
+
+function openEditor(id) {
+  currentPhotoId = id; selectedMarkerId = null;
+  var photo = photos.find(function(p){ return p.id === id; });
+  $('editor-filename').textContent = photo.name;
+  $('editor-img').onload = function(){ imgNaturalW = $('editor-img').naturalWidth; imgNaturalH = $('editor-img').naturalHeight; renderMarkers(); };
+  $('editor-img').src = photo.url;
+  var maxN = photo.markers.reduce(function(m,mk){ var n=parseInt(mk.label); return isNaN(n)?m:Math.max(m,n); }, 0);
+  $('label-input').value = String(maxN + 1);
+  setMode('add');
+  updateNavButtons(); /* ★ナビゲーション更新 */
+  showView('editor');
+}
+
+$('btn-back').onclick = function(){ showView('gallery'); renderGallery(); };
+
+/* ★前へボタン */
+$('btn-prev').onclick = function() {
+  var idx = photos.findIndex(function(p){ return p.id === currentPhotoId; });
+  if (idx > 0) openEditor(photos[idx - 1].id);
+};
+
+/* ★次へボタン */
+$('btn-next').onclick = function() {
+  var idx = photos.findIndex(function(p){ return p.id === currentPhotoId; });
+  if (idx < photos.length - 1) openEditor(photos[idx + 1].id);
+};
+
 function setMode(m){ currentMode=m; $('btn-mode-add').classList.toggle('active',m==='add'); $('btn-mode-select').classList.toggle('active',m==='select'); $('editor-canvas-wrap').style.cursor=m==='add'?'crosshair':'default'; if(m==='select'){selectedMarkerId=null;renderMarkers();} }
 $('btn-mode-add').onclick    = function(){ setMode('add'); };
 $('btn-mode-select').onclick = function(){ setMode('select'); };
@@ -669,7 +647,7 @@ $('btn-download').onclick = function(){
   });
 };
 
-/* ── Canvas描画 (マーカー合成) ── */
+/* ── Canvas描画（マーカー合成） ── */
 function renderToCanvas(photo) {
   return new Promise(function(resolve, reject) {
     var img = new Image();
@@ -715,7 +693,7 @@ function renderToCanvas(photo) {
   });
 }
 
-/* ── 一括ダウンロード (ZIP) ── */
+/* ── 一括ダウンロード（ZIP） ── */
 async function bulkDownload() {
   if (!selectedPhotoIds.size) return;
   var targets = photos.filter(function(p){ return selectedPhotoIds.has(p.id); });
