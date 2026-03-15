@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>配筋マーカー</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'DM Mono', monospace; background: #0F1117; color: #fff; overflow: hidden; }
+body { display: flex; flex-direction: column; }
+button { cursor: pointer; font-family: 'DM Mono', monospace; border: none; transition: opacity 0.15s; }
+button:hover { opacity: 0.82; } button:active { opacity: 0.65; }
+input, select { font-family: 'DM Mono', monospace; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #161820; }
+::-webkit-scrollbar-thumb { background: #2A2D35; border-radius: 3px; }
+
+/* HEADER */
+#header { display:flex; align-items:center; gap:10px; padding:10px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; }
+.logo-title { font-size:17px; font-weight:700; letter-spacing:-0.5px; }
+.logo-title span { color:#FF6B00; }
+.logo-sub { font-size:9px; color:#444; letter-spacing:0.1em; margin-top:1px; }
+#header-actions { display:flex; align-items:center; gap:8px; margin-left:auto; flex-wrap:wrap; }
+
+/* Dropbox badge */
+#dbx-badge { display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:20px; background:#1E2130; border:1px solid #2A2D35; font-size:11px; color:#555; cursor:pointer; white-space:nowrap; transition:background 0.15s,border-color 0.15s; }
+#dbx-badge.connected { background:#0D2235; border-color:#0061FE; color:#4DA3FF; }
+#dbx-badge .dbx-dot { width:7px; height:7px; border-radius:50%; background:#444; transition:background 0.15s; }
+#dbx-badge.connected .dbx-dot { background:#0061FE; }
+
+/* BUTTONS */
+.btn { padding:7px 13px; border-radius:7px; font-size:12px; font-weight:700; white-space:nowrap; }
+.btn-primary   { background:#FF6B00; color:#fff; }
+.btn-secondary { background:#2A2D35; color:#C8CADC; }
+.btn-dbx       { background:#0061FE; color:#fff; }
+.btn:disabled  { opacity:0.4; cursor:not-allowed; }
+
+/* VIEWS */
+#view-upload, #view-gallery, #view-editor { flex:1; overflow:hidden; display:none; flex-direction:column; }
+#view-upload.active, #view-gallery.active, #view-editor.active { display:flex; }
+
+/* SETUP NOTICE */
+#setup-notice { background:#0A1A30; border:1px solid #0061FE; border-radius:10px; margin:12px; padding:14px 16px; font-size:11px; color:#4DA3FF; line-height:1.8; flex-shrink:0; }
+#setup-notice b { color:#fff; }
+#setup-notice code { background:#0F2040; padding:1px 6px; border-radius:3px; font-size:11px; }
+#setup-notice.hidden { display:none; }
+
+/* UPLOAD */
+#drop-zone { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; cursor:pointer; padding:32px; user-select:none; }
+.upload-icon { width:96px; height:96px; border-radius:24px; background:linear-gradient(135deg,#FF6B00,#FF8C00); display:flex; align-items:center; justify-content:center; font-size:40px; box-shadow:0 8px 32px rgba(255,107,0,0.3); }
+.upload-title { font-size:18px; font-weight:700; text-align:center; margin-bottom:6px; }
+.upload-sub { font-size:12px; color:#555; text-align:center; }
+.drop-hint { border:2px dashed #2A2D35; border-radius:16px; padding:20px 40px; color:#3A3D4A; font-size:12px; }
+#drop-zone.drag-over { background:rgba(255,107,0,0.07); }
+
+/* STATS */
+#stats-bar { display:flex; gap:14px; padding:7px 14px; align-items:center; background:#161820; border-bottom:1px solid #1E2130; font-size:11px; color:#555; flex-shrink:0; flex-wrap:wrap; }
+#stats-bar .accent { color:#FF6B00; }
+#stats-bar .hint   { margin-left:auto; color:#333; }
+
+/* GALLERY */
+#gallery-scroll { flex:1; overflow-y:auto; }
+#gallery-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; padding:14px; }
+.photo-card { border-radius:10px; border:2px solid #2A2D35; background:#161820; position:relative; transition:border 0.15s,box-shadow 0.15s; }
+.photo-card.selected { border-color:#FF6B00; box-shadow:0 0 0 2px #FF6B00; }
+.card-checkbox { position:absolute; top:8px; left:8px; z-index:5; width:22px; height:22px; border-radius:6px; background:rgba(0,0,0,0.6); border:2px solid #8B8FA8; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#fff; font-size:13px; font-weight:900; }
+.card-checkbox.checked { background:#FF6B00; border-color:#FF6B00; }
+.card-del { position:absolute; top:8px; right:8px; z-index:5; width:22px; height:22px; border-radius:50%; background:rgba(255,23,68,0.85); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; font-weight:900; line-height:1; }
+.card-thumb { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; cursor:pointer; border-radius:8px 8px 0 0; }
+.card-info  { padding:7px 10px; }
+.card-name    { color:#C8CADC; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.card-markers { color:#FF6B00; font-size:11px; margin-top:2px; }
+.card-edit-btn { width:calc(100% - 16px); margin:4px 8px 8px; display:block; text-align:center; }
+
+/* GALLERY BULK BAR */
+#gallery-actions { display:flex; gap:8px; padding:8px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; align-items:center; }
+#gallery-actions.hidden { display:none; }
+#gallery-actions span { font-size:12px; color:#8B8FA8; }
+
+/* EDITOR */
+#editor-topbar { display:flex; align-items:center; gap:10px; padding:10px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; }
+#editor-filename { color:#8B8FA8; font-size:12px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* TOOLBAR */
+#editor-toolbar { background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; }
+.toolbar-row { display:flex; align-items:center; gap:10px; padding:8px 14px; flex-wrap:wrap; }
+.toolbar-row + .toolbar-row { border-top:1px solid #1E2130; }
+.mode-toggle { display:flex; border-radius:8px; overflow:hidden; border:1px solid #2A2D35; }
+.mode-btn { padding:6px 13px; border:none; font-size:12px; font-weight:600; font-family:'DM Mono',monospace; cursor:pointer; background:#1E2130; color:#8B8FA8; transition:background 0.15s; }
+.mode-btn.active { background:#FF6B00; color:#fff; }
+#label-input { width:58px; padding:5px 8px; border-radius:6px; border:1px solid #2A2D35; background:#1E2130; color:#fff; font-size:13px; outline:none; }
+.color-swatch { width:22px; height:22px; border-radius:50%; cursor:pointer; border:2px solid transparent; flex-shrink:0; transition:border 0.1s; }
+.color-swatch.active { border:2.5px solid #fff; box-shadow:0 0 0 2.5px var(--c); }
+.toggle-pill { display:flex; align-items:center; gap:6px; cursor:pointer; padding:5px 10px; border-radius:20px; border:1px solid #2A2D35; background:#1E2130; font-size:12px; color:#8B8FA8; user-select:none; transition:background 0.15s,color 0.15s,border-color 0.15s; }
+.toggle-pill.on { background:#152215; border-color:#00C853; color:#00C853; }
+.toggle-pill .tdot { width:8px; height:8px; border-radius:50%; background:#555; transition:background 0.15s; }
+.toggle-pill.on .tdot { background:#00C853; }
+.slider-group { display:flex; align-items:center; gap:7px; }
+.slider-label { font-size:11px; color:#666; white-space:nowrap; min-width:40px; }
+.slider-val   { font-size:11px; color:#FF6B00; min-width:32px; text-align:right; }
+input[type=range] { -webkit-appearance:none; width:90px; height:4px; border-radius:2px; background:#2A2D35; outline:none; cursor:pointer; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#FF6B00; cursor:pointer; border:2px solid #fff; }
+input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%; background:#FF6B00; border:2px solid #fff; }
+#marker-count-badge { font-size:11px; color:#555; white-space:nowrap; }
+
+/* EDITOR CANVAS */
+#editor-scroll { flex:1; overflow:auto; display:flex; justify-content:center; padding:14px; }
+#editor-canvas-wrap { position:relative; display:inline-block; max-width:100%; align-self:flex-start; }
+#editor-img { display:block; max-width:100%; height:auto; user-select:none; pointer-events:none; }
+#marker-layer { position:absolute; top:0; left:0; width:100%; height:100%; }
+.marker-dot { position:absolute; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,0.8); cursor:pointer; user-select:none; transform:translate(-50%,-50%); border:2.5px solid rgba(0,0,0,0.4); box-shadow:0 2px 8px rgba(0,0,0,0.35); transition:box-shadow 0.12s; letter-spacing:-0.5px; }
+.marker-dot.selected { border:3px solid #fff !important; z-index:20; }
+.marker-del-btn { position:absolute; top:-9px; right:-9px; width:19px; height:19px; border-radius:50%; background:#FF1744; border:2px solid #fff; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; cursor:pointer; z-index:30; opacity:1 !important; }
+.prop-panel { position:absolute; background:#1E2130; border:1px solid #2A2D35; border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; z-index:50; min-width:205px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:all; transform:translateX(-50%); }
+.prop-row { display:flex; align-items:center; gap:8px; font-size:11px; color:#8B8FA8; }
+.prop-row span.lbl { min-width:44px; }
+.prop-row input[type=range] { width:85px; }
+.prop-row .vl { color:#FF6B00; min-width:32px; text-align:right; }
+.prop-row input[type=checkbox] { accent-color:#FF6B00; width:14px; height:14px; cursor:pointer; flex-shrink:0; }
+
+/* DROPBOX FOLDER MODAL */
+#dbx-modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:200; display:flex; align-items:center; justify-content:center; }
+#dbx-modal-bg.hidden { display:none; }
+#dbx-modal { background:#161820; border:1px solid #2A2D35; border-radius:14px; padding:24px; width:min(400px,92vw); display:flex; flex-direction:column; gap:16px; }
+#dbx-modal h3 { font-size:15px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px; }
+#dbx-modal p  { font-size:12px; color:#8B8FA8; line-height:1.7; }
+#dbx-folder-input { width:100%; padding:8px 10px; border-radius:7px; border:1px solid #2A2D35; background:#1E2130; color:#fff; font-size:13px; outline:none; }
+#dbx-folder-input:focus { border-color:#0061FE; }
+.dbx-modal-row { display:flex; gap:8px; }
+.dbx-example { font-size:10px; color:#444; margin-top:-8px; }
+
+/* PROGRESS BAR */
+#progress-wrap { display:none; position:fixed; bottom:60px; left:50%; transform:translateX(-50%); background:#1E2130; border:1px solid #2A2D35; border-radius:12px; padding:14px 20px; z-index:300; min-width:260px; }
+#progress-wrap.show { display:block; }
+#progress-label { font-size:12px; color:#C8CADC; margin-bottom:8px; text-align:center; }
+#progress-bar-bg { background:#2A2D35; border-radius:4px; height:6px; overflow:hidden; }
+#progress-bar { background:#0061FE; height:6px; border-radius:4px; width:0%; transition:width 0.3s; }
+
+/* TOAST */
+#toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); padding:9px 20px; border-radius:20px; font-size:12px; font-weight:700; white-space:nowrap; z-index:400; pointer-events:none; opacity:0; transition:opacity 0.25s; max-width:90vw; text-align:center; }
+#toast.show { opacity:1; }
+#toast.ok  { background:#00C853; color:#fff; }
+#toast.err { background:#FF1744; color:#fff; }
+#toast.inf { background:#0061FE; color:#fff; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <div>
+    <div class="logo-title"><span>⬡</span> 配筋マーカー</div>
+    <div class="logo-sub">REBAR PHOTO MARKER SYSTEM</div>
+  </div>
+  <div id="header-actions">
+    <div id="dbx-badge" onclick="dbxToggle()">
+      <div class="dbx-dot"></div>
+      <span id="dbx-badge-text">Dropbox 未接続</span>
+    </div>
+    <button class="btn btn-secondary" id="btn-select-all" style="display:none">全選択</button>
+    <input type="file" id="file-input" accept="image/*" multiple style="display:none">
+    <button class="btn btn-primary" id="btn-add-photos">＋ 写真追加</button>
+  </div>
+</div>
+
+<!-- SETUP NOTICE -->
+<div id="setup-notice">
+  ⚙️ <b>Dropbox連携の初期設定：</b>
+  HTMLファイルの先頭の <code>DROPBOX_APP_KEY</code> を取得したApp Keyに書き換えてください。<br>
+  手順: <b>①</b> <a href="https://www.dropbox.com/developers/apps" target="_blank" style="color:#4DA3FF">dropbox.com/developers/apps</a> → Create app → Scoped / Full Dropbox →
+  <b>②</b> Permissionsタブで <code>files.content.write</code> にチェック →
+  <b>③</b> SettingsタブのApp keyをコピー →
+  <b>④</b> Redirect URIsにこのHTMLのURLを追加
+</div>
+
+<!-- UPLOAD VIEW -->
+<div id="view-upload" class="active">
+  <div id="drop-zone">
+    <div class="upload-icon">📷</div>
+    <div>
+      <div class="upload-title">写真をドロップ または タップして選択</div>
+      <div class="upload-sub">JPG・PNG対応 · 複数枚まとめて追加可能</div>
+    </div>
+    <div class="drop-hint">ここにドラッグ＆ドロップ</div>
+  </div>
+</div>
+
+<!-- GALLERY VIEW -->
+<div id="view-gallery">
+  <div id="stats-bar">
+    <span>写真 <span class="accent" id="stat-total">0</span> 枚</span>
+    <span>選択中 <span class="accent" id="stat-selected">0</span> 枚</span>
+    <span>マーカー計 <span class="accent" id="stat-markers">0</span> 個</span>
+    <span class="hint">ドロップで追加</span>
+  </div>
+  <div id="gallery-actions" class="hidden">
+    <span id="gallery-sel-label"></span>
+    <button class="btn btn-secondary" id="btn-bulk-dl2">↓ まとめてDL</button>
+    <button class="btn btn-dbx"       id="btn-bulk-dbx">☁ Dropboxに保存</button>
+  </div>
+  <div id="gallery-scroll">
+    <div id="gallery-grid"></div>
+  </div>
+</div>
+
+<!-- EDITOR VIEW -->
+<div id="view-editor">
+  <div id="editor-topbar">
+    <button class="btn btn-secondary" id="btn-back">← 戻る</button>
+    <span id="editor-filename"></span>
+    <button class="btn btn-dbx"     id="btn-dbx-save">☁ Dropboxに保存</button>
+    <button class="btn btn-primary" id="btn-download">↓ DL</button>
+  </div>
+  <div id="editor-toolbar">
+    <div class="toolbar-row">
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="btn-mode-add">＋ 追加</button>
+        <button class="mode-btn"        id="btn-mode-select">◎ 選択</button>
+      </div>
+      <input id="label-input" type="text" placeholder="ラベル" maxlength="4" value="1">
+      <div id="color-swatches" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      <div class="toggle-pill on" id="toggle-label">
+        <div class="tdot"></div>
+        <span id="toggle-label-text">番号あり</span>
+      </div>
+      <span id="marker-count-badge">マーカー: 0個</span>
+    </div>
+    <div class="toolbar-row">
+      <div class="slider-group">
+        <span class="slider-label">サイズ</span>
+        <input type="range" id="slider-size" min="20" max="120" value="50" step="5">
+        <span class="slider-val" id="val-size">50</span>
+      </div>
+      <div class="slider-group">
+        <span class="slider-label">透明度</span>
+        <input type="range" id="slider-opacity" min="10" max="100" value="100" step="5">
+        <span class="slider-val" id="val-opacity">100%</span>
+      </div>
+      <span style="font-size:10px;color:#3A3D4A;">次のマーカーに適用</span>
+    </div>
+  </div>
+  <div id="editor-scroll">
+    <div id="editor-canvas-wrap">
+      <img id="editor-img" src="" alt="">
+      <div id="marker-layer"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Dropbox folder modal -->
+<div id="dbx-modal-bg" class="hidden">
+  <div id="dbx-modal">
+    <h3>☁ Dropboxの保存先フォルダ</h3>
+    <p>保存先フォルダのパスを入力してください。<br>フォルダが存在しない場合は自動で作成されます。</p>
+    <input id="dbx-folder-input" type="text" placeholder="例: 配筋写真/現場A" value="配筋写真">
+    <p class="dbx-example">例: 配筋写真 → /配筋写真/<br>例: 配筋写真/2024年度/現場A → /配筋写真/2024年度/現場A/</p>
+    <div class="dbx-modal-row">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeDbxModal()">キャンセル</button>
+      <button class="btn btn-dbx"       style="flex:2" id="btn-dbx-confirm">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Progress -->
+<div id="progress-wrap">
+  <div id="progress-label">アップロード中…</div>
+  <div id="progress-bar-bg"><div id="progress-bar"></div></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ============================================================
+//  ★ Dropbox開発者ページで取得したApp Keyをここに設定してください
+// ============================================================
+const DROPBOX_APP_KEY = 'YOUR_APP_KEY_HERE';
+// ============================================================
+
+const DBX_ENABLED = DROPBOX_APP_KEY !== 'YOUR_APP_KEY_HERE';
+
+// ===== DROPBOX PKCE OAuth =====
+let dbxToken = localStorage.getItem('dbx_token') || null;
+let dbxPendingAction = null;
+
+function updateDbxBadge() {
+  const badge = $('dbx-badge');
+  if (dbxToken) {
+    badge.classList.add('connected');
+    $('dbx-badge-text').textContent = '☁ Dropbox 接続済';
+  } else {
+    badge.classList.remove('connected');
+    $('dbx-badge-text').textContent = 'Dropbox 未接続';
+  }
+}
+
+async function dbxToggle() {
+  if (!DBX_ENABLED) { showToast('先にApp Keyを設定してください', 'err'); return; }
+  if (dbxToken) {
+    if (confirm('Dropboxの接続を切断しますか？')) {
+      localStorage.removeItem('dbx_token');
+      localStorage.removeItem('dbx_pkce_verifier');
+      dbxToken = null;
+      updateDbxBadge();
+      showToast('切断しました', 'inf');
+    }
+  } else {
+    await dbxStartAuth();
+  }
+}
+
+async function dbxStartAuth() {
+  const verifier  = generateVerifier();
+  const challenge = await generateChallenge(verifier);
+  localStorage.setItem('dbx_pkce_verifier', verifier);
+  // save current page state hint
+  localStorage.setItem('dbx_return', 'auth');
+  const redirectUri = window.location.href.split('?')[0].split('#')[0];
+  const url = 'https://www.dropbox.com/oauth2/authorize?' + new URLSearchParams({
+    client_id:             DROPBOX_APP_KEY,
+    response_type:         'code',
+    code_challenge:        challenge,
+    code_challenge_method: 'S256',
+    redirect_uri:          redirectUri,
+    token_access_type:     'online',
+  });
+  window.location.href = url;
+}
+
+async function dbxHandleCallback() {
+  const params   = new URLSearchParams(window.location.search);
+  const code     = params.get('code');
+  const verifier = localStorage.getItem('dbx_pkce_verifier');
+  if (!code || !verifier) return;
+
+  // Clean URL
+  window.history.replaceState({}, document.title, window.location.pathname);
+
+  const redirectUri = window.location.href.split('?')[0].split('#')[0];
+  try {
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        grant_type:    'authorization_code',
+        code_verifier: verifier,
+        client_id:     DROPBOX_APP_KEY,
+        redirect_uri:  redirectUri,
+      }),
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      dbxToken = data.access_token;
+      localStorage.setItem('dbx_token', dbxToken);
+      localStorage.removeItem('dbx_pkce_verifier');
+      localStorage.removeItem('dbx_return');
+      updateDbxBadge();
+      showToast('Dropboxに接続しました ✓', 'ok');
+    } else {
+      showToast('認証失敗: ' + (data.error_description || data.error), 'err');
+    }
+  } catch(e) { showToast('通信エラー: ' + e.message, 'err'); }
+}
+
+// PKCE helpers
+function generateVerifier() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function generateChallenge(verifier) {
+  const data = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+
+// Upload single file blob to Dropbox
+async function dbxUpload(path, blob) {
+  const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
+    method: 'POST',
+    headers: {
+      'Authorization':    'Bearer ' + dbxToken,
+      'Content-Type':     'application/octet-stream',
+      'Dropbox-API-Arg':  JSON.stringify({ path, mode: 'overwrite', autorename: true }),
+    },
+    body: blob,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      // Token expired
+      localStorage.removeItem('dbx_token');
+      dbxToken = null; updateDbxBadge();
+      throw new Error('認証期限切れ。再度サインインしてください。');
+    }
+    throw new Error(err.error_summary || res.statusText);
+  }
+  return await res.json();
+}
+
+// ===== MODAL =====
+function openDbxModal(action) {
+  if (!DBX_ENABLED) { showToast('先にApp Keyを設定してください', 'err'); return; }
+  if (!dbxToken)    { showToast('先にDropboxに接続してください', 'inf'); dbxStartAuth(); return; }
+  dbxPendingAction = action;
+  $('dbx-modal-bg').classList.remove('hidden');
+}
+function closeDbxModal() { $('dbx-modal-bg').classList.add('hidden'); dbxPendingAction = null; }
+
+$('btn-dbx-confirm').onclick = async () => {
+  const folder = $('dbx-folder-input').value.trim().replace(/^\/|\/$/g,'') || '配筋写真';
+  closeDbxModal();
+  if (!dbxPendingAction) return;
+
+  if (dbxPendingAction.type === 'single') {
+    const photo = photos.find(p => p.id === dbxPendingAction.id);
+    showProgress('アップロード中…', 0);
+    try {
+      const canvas = await renderToCanvas(photo);
+      const blob   = await canvasToBlob(canvas);
+      const fname  = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
+      await dbxUpload(`/${folder}/${fname}`, blob);
+      hideProgress();
+      showToast('Dropboxに保存しました ✓', 'ok');
+    } catch(e) { hideProgress(); showToast('保存失敗: ' + e.message, 'err'); }
+
+  } else if (dbxPendingAction.type === 'bulk') {
+    const targets = photos.filter(p => dbxPendingAction.ids.includes(p.id));
+    let ok = 0;
+    showProgress(`0 / ${targets.length} 枚`, 0);
+    for (const photo of targets) {
+      try {
+        const canvas = await renderToCanvas(photo);
+        const blob   = await canvasToBlob(canvas);
+        const fname  = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
+        await dbxUpload(`/${folder}/${fname}`, blob);
+        ok++;
+        showProgress(`${ok} / ${targets.length} 枚完了`, ok / targets.length * 100);
+      } catch(e) { showToast('エラー: ' + e.message, 'err'); }
+    }
+    hideProgress();
+    showToast(`${ok} / ${targets.length} 枚をDropboxに保存しました ✓`, 'ok');
+  }
+};
+
+// ===== PROGRESS =====
+function showProgress(label, pct) {
+  $('progress-wrap').classList.add('show');
+  $('progress-label').textContent = label;
+  $('progress-bar').style.width = pct + '%';
+}
+function hideProgress() { $('progress-wrap').classList.remove('show'); }
+
+// ===== CANVAS BLOB HELPER =====
+function canvasToBlob(canvas) {
+  return new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+}
+
+// ===== APP STATE =====
+const COLORS = ['#FF6B00','#FFD600','#00C853','#2979FF','#E040FB','#FF1744'];
+let photos = [], selectedPhotoIds = new Set(), currentPhotoId = null;
+let currentMode = 'add', currentColor = COLORS[0], currentShowLabel = true;
+let currentSize = 50, currentOpacity = 100, selectedMarkerId = null;
+let imgNaturalW = 0, imgNaturalH = 0;
+
+const uid = () => Math.random().toString(36).substr(2, 9);
+function $(id) { return document.getElementById(id); }
+
+// ===== VIEWS =====
+function showView(n) { ['upload','gallery','editor'].forEach(v => $('view-'+v).classList.remove('active')); $('view-'+n).classList.add('active'); }
+
+// ===== FILES =====
+function loadFiles(files) {
+  const imgs = Array.from(files).filter(f => f.type.startsWith('image/')); if (!imgs.length) return;
+  let loaded = 0;
+  imgs.forEach(f => {
+    const r = new FileReader();
+    r.onload = e => { photos.push({id:uid(),name:f.name,url:e.target.result,markers:[]}); if(++loaded===imgs.length){showView('gallery');renderGallery();} };
+    r.readAsDataURL(f);
+  });
+}
+$('btn-add-photos').onclick = () => $('file-input').click();
+$('file-input').onchange = e => { loadFiles(e.target.files); $('file-input').value=''; };
+$('drop-zone').onclick = () => $('file-input').click();
+['dragover','dragenter'].forEach(ev => document.addEventListener(ev, e=>{e.preventDefault();$('drop-zone').classList.add('drag-over');}));
+['dragleave','drop'].forEach(ev => document.addEventListener(ev, e=>{e.preventDefault();$('drop-zone').classList.remove('drag-over');if(ev==='drop')loadFiles(e.dataTransfer.files);}));
+
+// ===== GALLERY =====
+function renderGallery() {
+  $('stat-total').textContent    = photos.length;
+  $('stat-selected').textContent = selectedPhotoIds.size;
+  $('stat-markers').textContent  = photos.reduce((s,p)=>s+p.markers.length,0);
+  $('btn-select-all').style.display = photos.length ? '' : 'none';
+  $('btn-select-all').textContent   = (selectedPhotoIds.size===photos.length&&photos.length)?'全解除':'全選択';
+
+  const actBar = $('gallery-actions');
+  if (selectedPhotoIds.size > 0) {
+    actBar.classList.remove('hidden');
+    $('gallery-sel-label').textContent = selectedPhotoIds.size + '枚選択中';
+  } else {
+    actBar.classList.add('hidden');
+  }
+
+  $('gallery-grid').innerHTML = '';
+  photos.forEach(photo => {
+    const sel  = selectedPhotoIds.has(photo.id);
+    const card = document.createElement('div');
+    card.className = 'photo-card'+(sel?' selected':'');
+    card.innerHTML = `
+      <div class="card-checkbox${sel?' checked':''}" data-id="${photo.id}">${sel?'✓':''}</div>
+      <div class="card-del" data-del="${photo.id}">×</div>
+      <img class="card-thumb" src="${photo.url}" data-edit="${photo.id}">
+      <div class="card-info">
+        <div class="card-name" title="${photo.name}">${photo.name}</div>
+        <div class="card-markers">マーカー ${photo.markers.length}個</div>
+      </div>
+      <button class="btn btn-primary card-edit-btn" data-edit="${photo.id}">編集</button>`;
+    $('gallery-grid').appendChild(card);
+  });
+  $('gallery-grid').querySelectorAll('[data-edit]').forEach(el => el.addEventListener('click', ()=>openEditor(el.dataset.edit)));
+  $('gallery-grid').querySelectorAll('[data-del]').forEach(el  => el.addEventListener('click', e=>{e.stopPropagation();deletePhoto(el.dataset.del);}));
+  $('gallery-grid').querySelectorAll('[data-id]').forEach(el   => el.addEventListener('click', e=>{e.stopPropagation();toggleSelect(el.dataset.id);}));
+  if (!photos.length) showView('upload');
+}
+function deletePhoto(id) { photos=photos.filter(p=>p.id!==id); selectedPhotoIds.delete(id); renderGallery(); }
+function toggleSelect(id) { selectedPhotoIds.has(id)?selectedPhotoIds.delete(id):selectedPhotoIds.add(id); renderGallery(); }
+$('btn-select-all').onclick = () => { selectedPhotoIds.size===photos.length?selectedPhotoIds.clear():photos.forEach(p=>selectedPhotoIds.add(p.id)); renderGallery(); };
+$('btn-bulk-dl2').onclick  = () => bulkDownload();
+$('btn-bulk-dbx').onclick  = () => openDbxModal({ type:'bulk', ids:[...selectedPhotoIds] });
+
+// ===== COLOR SWATCHES =====
+const swatchWrap = $('color-swatches');
+COLORS.forEach(c => {
+  const sw = document.createElement('div');
+  sw.className='color-swatch'+(c===currentColor?' active':''); sw.style.background=c; sw.style.setProperty('--c',c);
+  sw.onclick=()=>{ currentColor=c; swatchWrap.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active')); sw.classList.add('active'); };
+  swatchWrap.appendChild(sw);
+});
+
+// ===== LABEL TOGGLE =====
+$('toggle-label').onclick = () => {
+  currentShowLabel = !currentShowLabel;
+  $('toggle-label').classList.toggle('on', currentShowLabel);
+  $('toggle-label-text').textContent = currentShowLabel ? '番号あり' : '番号なし';
+};
+
+// ===== SLIDERS =====
+$('slider-size').oninput    = () => { currentSize=+$('slider-size').value; $('val-size').textContent=currentSize; };
+$('slider-opacity').oninput = () => { currentOpacity=+$('slider-opacity').value; $('val-opacity').textContent=currentOpacity+'%'; };
+
+// ===== EDITOR =====
+function openEditor(id) {
+  currentPhotoId=id; selectedMarkerId=null;
+  const photo=photos.find(p=>p.id===id);
+  $('editor-filename').textContent=photo.name;
+  $('editor-img').onload=()=>{ imgNaturalW=$('editor-img').naturalWidth; imgNaturalH=$('editor-img').naturalHeight; renderMarkers(); };
+  $('editor-img').src=photo.url;
+  const maxN=photo.markers.reduce((m,mk)=>{const n=parseInt(mk.label);return isNaN(n)?m:Math.max(m,n);},0);
+  $('label-input').value=String(maxN+1);
+  setMode('add'); showView('editor');
+}
+$('btn-back').onclick=()=>{ showView('gallery'); renderGallery(); };
+function setMode(m) {
+  currentMode=m;
+  $('btn-mode-add').classList.toggle('active',m==='add');
+  $('btn-mode-select').classList.toggle('active',m==='select');
+  $('editor-canvas-wrap').style.cursor=m==='add'?'crosshair':'default';
+  if(m==='select'){selectedMarkerId=null;renderMarkers();}
+}
+$('btn-mode-add').onclick    = ()=>setMode('add');
+$('btn-mode-select').onclick = ()=>setMode('select');
+
+function addMarker(cx,cy) {
+  const rect=$('editor-img').getBoundingClientRect();
+  const x=(cx-rect.left)*(imgNaturalW/rect.width), y=(cy-rect.top)*(imgNaturalH/rect.height);
+  const lbl=$('label-input').value.trim()||'1';
+  const photo=photos.find(p=>p.id===currentPhotoId);
+  const mk={id:uid(),x,y,label:lbl,color:currentColor,showLabel:currentShowLabel,size:currentSize,opacity:currentOpacity};
+  photo.markers.push(mk);
+  const n=parseInt(lbl); if(!isNaN(n)) $('label-input').value=String(n+1);
+  selectedMarkerId=mk.id; renderMarkers();
+}
+$('editor-canvas-wrap').addEventListener('click', e=>{
+  if(currentMode!=='add'||e.target.closest('.marker-dot')||e.target.closest('.prop-panel')) return;
+  addMarker(e.clientX,e.clientY);
+});
+$('editor-canvas-wrap').addEventListener('touchend', e=>{
+  if(currentMode!=='add'||e.target.closest('.marker-dot')||e.target.closest('.prop-panel')) return;
+  e.preventDefault(); const t=e.changedTouches[0]; addMarker(t.clientX,t.clientY);
+},{passive:false});
+$('editor-canvas-wrap').addEventListener('click', e=>{
+  if(currentMode!=='select') return;
+  if(!e.target.closest('.marker-dot')&&!e.target.closest('.prop-panel')){selectedMarkerId=null;renderMarkers();}
+});
+
+// ===== RENDER MARKERS =====
+function renderMarkers() {
+  const photo=photos.find(p=>p.id===currentPhotoId); if(!photo) return;
+  $('marker-layer').innerHTML='';
+  $('marker-count-badge').textContent=`マーカー: ${photo.markers.length}個`;
+  const rect=$('editor-img').getBoundingClientRect();
+  const dW=rect.width||$('editor-img').offsetWidth, dH=rect.height||$('editor-img').offsetHeight;
+  const sX=imgNaturalW>0?dW/imgNaturalW:1, sY=imgNaturalH>0?dH/imgNaturalH:1, base=Math.min(dW,dH);
+  photo.markers.forEach(mk=>{
+    const sel=mk.id===selectedMarkerId;
+    const sp=Math.max(16,((mk.size??50)/100)*base*0.14), fs=Math.max(9,sp*0.42), op=(mk.opacity??100)/100;
+    const showLbl=mk.showLabel!==false;
+    const dot=document.createElement('div');
+    dot.className='marker-dot'+(sel?' selected':'');
+    dot.style.cssText=`left:${mk.x*sX}px;top:${mk.y*sY}px;width:${sp}px;height:${sp}px;background:${mk.color};font-size:${fs}px;opacity:${op};box-shadow:${sel?`0 0 0 3px ${mk.color},0 4px 16px rgba(0,0,0,0.5)`:'0 2px 8px rgba(0,0,0,0.35)'};`;
+    dot.textContent=showLbl?mk.label:'';
+    if(sel){const db=document.createElement('div');db.className='marker-del-btn';db.textContent='×';db.style.opacity='1';db.onclick=e=>{e.stopPropagation();deleteMarker(mk.id);};dot.appendChild(db);}
+    dot.onclick=e=>{e.stopPropagation();if(currentMode==='add')return;selectedMarkerId=selectedMarkerId===mk.id?null:mk.id;renderMarkers();};
+    $('marker-layer').appendChild(dot);
+    if(sel){
+      const panel=document.createElement('div'); panel.className='prop-panel';
+      const px=mk.x*sX, py=mk.y*sY, below=py<dH*0.72;
+      panel.style.left=px+'px';
+      if(below) panel.style.top=(py+sp/2+10)+'px'; else panel.style.bottom=(dH-py+sp/2+10)+'px';
+      panel.onclick=e=>e.stopPropagation();
+      panel.appendChild(makePropSlider('サイズ',mk.size??50,20,120,5,v=>{mk.size=v;renderMarkers();}));
+      panel.appendChild(makePropSlider('透明度',mk.opacity??100,10,100,5,v=>{mk.opacity=v;renderMarkers();},v=>v+'%'));
+      const lr=document.createElement('div');lr.className='prop-row';
+      const ck=document.createElement('input');ck.type='checkbox';ck.checked=showLbl;ck.onchange=()=>{mk.showLabel=ck.checked;renderMarkers();};
+      const lt=document.createElement('span');lt.textContent='番号を表示する';
+      lr.appendChild(ck);lr.appendChild(lt);panel.appendChild(lr);
+      $('marker-layer').appendChild(panel);
+    }
+  });
+}
+function makePropSlider(label,init,min,max,step,onChange,fmt){
+  const row=document.createElement('div');row.className='prop-row';
+  const lb=document.createElement('span');lb.className='lbl';lb.textContent=label;
+  const sl=document.createElement('input');sl.type='range';sl.min=min;sl.max=max;sl.step=step;sl.value=init;
+  const vl=document.createElement('span');vl.className='vl';vl.textContent=fmt?fmt(init):init;
+  sl.oninput=()=>{const v=+sl.value;vl.textContent=fmt?fmt(v):v;onChange(v);};
+  row.appendChild(lb);row.appendChild(sl);row.appendChild(vl);return row;
+}
+function deleteMarker(id){const photo=photos.find(p=>p.id===currentPhotoId);photo.markers=photo.markers.filter(m=>m.id!==id);selectedMarkerId=null;renderMarkers();}
+window.addEventListener('resize',()=>{if(currentPhotoId)renderMarkers();});
+
+// ===== RENDER TO CANVAS =====
+function renderToCanvas(photo){
+  return new Promise(resolve=>{
+    const img=new Image();img.onload=()=>{
+      const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+      const ctx=cv.getContext('2d');ctx.drawImage(img,0,0);
+      const base=Math.min(img.naturalWidth,img.naturalHeight);
+      photo.markers.forEach(mk=>{
+        const ms=Math.max(16,((mk.size??50)/100)*base*0.14),op=(mk.opacity??100)/100,showLbl=mk.showLabel!==false;
+        ctx.save();ctx.globalAlpha=op;
+        ctx.beginPath();ctx.arc(mk.x,mk.y,ms/2,0,Math.PI*2);ctx.fillStyle=mk.color;ctx.fill();
+        ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=ms*0.07;ctx.stroke();
+        if(showLbl){ctx.globalAlpha=Math.max(op,0.9);ctx.fillStyle='#fff';ctx.font=`bold ${ms*0.44}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,0.7)';ctx.shadowBlur=ms*0.15;ctx.fillText(mk.label,mk.x,mk.y);}
+        ctx.restore();
+      });
+      resolve(cv);
+    };img.src=photo.url;
+  });
+}
+
+// ===== DOWNLOAD =====
+async function downloadPhoto(photo){
+  const cv=await renderToCanvas(photo);
+  const a=document.createElement('a');a.href=cv.toDataURL('image/jpeg',0.95);a.download='marked_'+photo.name;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+}
+async function bulkDownload(){
+  const targets=photos.filter(p=>selectedPhotoIds.has(p.id));if(!targets.length)return;
+  if(targets.length===1){await downloadPhoto(targets[0]);return;}
+  const zip=new JSZip();
+  for(const photo of targets){const cv=await renderToCanvas(photo);zip.file('marked_'+photo.name.replace(/\.[^.]+$/,'')+'.jpg',cv.toDataURL('image/jpeg',0.95).split(',')[1],{base64:true});}
+  const blob=await zip.generateAsync({type:'blob'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='marked_photos.zip';
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);document.body.removeChild(a);},1000);
+}
+$('btn-download').onclick = async()=>{await downloadPhoto(photos.find(p=>p.id===currentPhotoId));};
+$('btn-dbx-save').onclick = ()=>openDbxModal({type:'single', id:currentPhotoId});
+
+// ===== TOAST =====
+let toastTimer;
+function showToast(msg,type='ok'){
+  const t=$('toast');t.textContent=msg;t.className='show '+type;
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.className='',3500);
+}
+
+// ===== INIT =====
+if (DBX_ENABLED) {
+  $('setup-notice').classList.add('hidden');
+  dbxHandleCallback(); // handle OAuth redirect
+}
+updateDbxBadge();
+renderGallery();
+</script>
+</body>
+</html>
