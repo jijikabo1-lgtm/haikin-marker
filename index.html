@@ -233,6 +233,7 @@ const DROPBOX_APP_KEY = 'c5xn5alzj04ola4';
 // ============================================================
 const DBX_ENABLED = !!DROPBOX_APP_KEY && DROPBOX_APP_KEY !== 'YOUR_APP_KEY_HERE';
 
+/* ── ストレージヘルパー (localStorage → sessionStorage → Cookie フォールバック) ── */
 function storageGet(key) {
   try { var v = localStorage.getItem(key); if (v !== null) return v; } catch(e) {}
   try { var v = sessionStorage.getItem(key); if (v !== null) return v; } catch(e) {}
@@ -383,10 +384,10 @@ async function dbxRefreshAccessToken() {
   return false;
 }
 
+/* ── Dropbox-API-Arg ヘッダー用 非ASCII文字エスケープ ── */
 function encodeDropboxArg(obj) {
   return JSON.stringify(obj).replace(/[^\x20-\x7E]/g, function(c) {
-    var code = c.charCodeAt(0);
-    return '\\u' + ('0000' + code.toString(16)).slice(-4);
+    return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
   });
 }
 
@@ -430,8 +431,8 @@ function closeDbxModal() {
 
 document.getElementById('btn-dbx-confirm').onclick = async function() {
   var folder = document.getElementById('dbx-folder-input').value.trim().replace(/^\/|\/$/g,'') || '配筋写真';
-  var action = dbxPendingAction;  // ★先にactionに保存
-  closeDbxModal();                // ★その後モーダルを閉じる
+  var action = dbxPendingAction;   // ★先にローカル変数へ退避
+  closeDbxModal();                  // ★退避後にモーダルを閉じる (dbxPendingAction=nullになるが問題なし)
   if (!action) return;
 
   if (!dbxToken) {
@@ -450,7 +451,11 @@ document.getElementById('btn-dbx-confirm').onclick = async function() {
       await dbxUpload('/' + folder + '/' + fname, blob);
       hideProgress();
       showToast('Dropboxに保存しました ✓', 'ok');
-    } catch(e) { hideProgress(); showToast('保存失敗: ' + e.message, 'err'); }
+    } catch(e) {
+      hideProgress();
+      showToast('保存失敗: ' + e.message, 'err');
+      console.error('Dropbox保存エラー:', e);
+    }
 
   } else if (action.type === 'bulk') {
     var targets = photos.filter(function(p){ return action.ids.indexOf(p.id) !== -1; });
@@ -464,7 +469,10 @@ document.getElementById('btn-dbx-confirm').onclick = async function() {
         await dbxUpload('/' + folder + '/' + fname, blob);
         okCount++;
         showProgress(okCount + ' / ' + targets.length + ' 枚完了', okCount / targets.length * 100);
-      } catch(e) { showToast('エラー: ' + e.message, 'err'); }
+      } catch(e) {
+        console.error('一括保存エラー:', e);
+        showToast('エラー: ' + e.message, 'err');
+      }
     }
     hideProgress();
     showToast(okCount + ' / ' + targets.length + ' 枚をDropboxに保存しました ✓', 'ok');
@@ -479,6 +487,7 @@ function showProgress(label, pct) {
 function hideProgress() { document.getElementById('progress-wrap').classList.remove('show'); }
 function canvasToBlob(canvas) { return new Promise(function(r){ canvas.toBlob(r, 'image/jpeg', 0.95); }); }
 
+/* ── アプリ本体 ── */
 var COLORS = ['#FF6B00','#FFD600','#00C853','#2979FF','#E040FB','#FF1744'];
 var photos = [], selectedPhotoIds = new Set(), currentPhotoId = null;
 var currentMode = 'add', currentColor = COLORS[0], currentShowLabel = true;
@@ -537,6 +546,7 @@ $('btn-select-all').onclick = function(){ selectedPhotoIds.size===photos.length 
 $('btn-bulk-dl2').onclick   = function(){ bulkDownload(); };
 $('btn-bulk-dbx').onclick   = function(){ openDbxModal({type:'bulk', ids:[...selectedPhotoIds]}); };
 
+/* ── カラースウォッチ ── */
 var swatchWrap = $('color-swatches');
 COLORS.forEach(function(c){
   var sw = document.createElement('div');
@@ -549,6 +559,7 @@ $('toggle-label').onclick   = function(){ currentShowLabel=!currentShowLabel; $(
 $('slider-size').oninput    = function(){ currentSize=+$('slider-size').value; $('val-size').textContent=currentSize; };
 $('slider-opacity').oninput = function(){ currentOpacity=+$('slider-opacity').value; $('val-opacity').textContent=currentOpacity+'%'; };
 
+/* ── エディタ ── */
 function openEditor(id) {
   currentPhotoId=id; selectedMarkerId=null;
   var photo=photos.find(function(p){ return p.id===id; });
@@ -592,121 +603,146 @@ function renderMarkers() {
     var dot=document.createElement('div'); dot.className='marker-dot'+(sel?' selected':'');
     dot.style.cssText='left:'+mk.x*sX+'px;top:'+mk.y*sY+'px;width:'+sp+'px;height:'+sp+'px;background:'+mk.color+';font-size:'+fs+'px;opacity:'+op+';box-shadow:'+(sel?'0 0 0 3px '+mk.color+',0 4px 16px rgba(0,0,0,0.5)':'0 2px 8px rgba(0,0,0,0.35)')+';';
     dot.textContent=showLbl?mk.label:'';
-    if(sel){ var db=document.createElement('div'); db.className='marker-del-btn'; db.textContent='×'; db.style.opacity='1'; db.onclick=function(e){ e.stopPropagation(); deleteMarker(mk.id); }; dot.appendChild(db); }
+    if(sel){
+      var db=document.createElement('div'); db.className='marker-del-btn'; db.textContent='×'; db.style.opacity='1';
+      db.onclick=function(e){ e.stopPropagation(); deleteMarker(mk.id); }; dot.appendChild(db);
+    }
     dot.onclick=function(e){ e.stopPropagation(); if(currentMode==='add') return; selectedMarkerId=selectedMarkerId===mk.id?null:mk.id; renderMarkers(); };
     $('marker-layer').appendChild(dot);
     if(sel){
       var panel=document.createElement('div'); panel.className='prop-panel';
-      var px=mk.x*sX, py=mk.y*sY, below=py<dH*0.72;
-      panel.style.left=px+'px';
-      if(below) panel.style.top=(py+sp/2+10)+'px'; else panel.style.bottom=(dH-py+sp/2+10)+'px';
-      panel.onclick=function(e){ e.stopPropagation(); };
-      panel.appendChild(makePropSlider('サイズ',mk.size!=null?mk.size:50,20,120,5,function(v){ mk.size=v; renderMarkers(); }));
-      panel.appendChild(makePropSlider('透明度',mk.opacity!=null?mk.opacity:100,10,100,5,function(v){ mk.opacity=v; renderMarkers(); },function(v){ return v+'%'; }));
-      var lr=document.createElement('div'); lr.className='prop-row';
-      var ck=document.createElement('input'); ck.type='checkbox'; ck.checked=showLbl; ck.onchange=function(){ mk.showLabel=ck.checked; renderMarkers(); };
-      var lt=document.createElement('span'); lt.textContent='番号を表示する';
-      lr.appendChild(ck); lr.appendChild(lt); panel.appendChild(lr);
+      var leftPx=mk.x*sX, topPx=mk.y*sY;
+      panel.style.cssText='left:'+leftPx+'px;top:'+(topPx+sp/2+10)+'px;';
+      panel.innerHTML=
+        '<div class="prop-row"><span class="lbl">サイズ</span><input type="range" min="20" max="120" step="5" value="'+mk.size+'" data-prop="size"><span class="vl" id="pp-size">'+mk.size+'</span></div>'+
+        '<div class="prop-row"><span class="lbl">透明度</span><input type="range" min="10" max="100" step="5" value="'+mk.opacity+'" data-prop="opacity"><span class="vl" id="pp-opacity">'+mk.opacity+'%</span></div>'+
+        '<div class="prop-row"><span class="lbl">番号表示</span><input type="checkbox" '+(showLbl?'checked':'')+' data-prop="showLabel"></div>'+
+        '<div class="prop-row" style="flex-wrap:wrap;gap:5px;">'+ COLORS.map(function(c){ return '<div class="color-swatch'+(c===mk.color?' active':'')+'" style="background:'+c+';--c:'+c+';" data-prop="color" data-val="'+c+'"></div>'; }).join('')+'</div>';
+      panel.querySelectorAll('input[type=range]').forEach(function(inp){
+        inp.oninput=function(){
+          var photo2=photos.find(function(p){ return p.id===currentPhotoId; });
+          var mk2=photo2.markers.find(function(m){ return m.id===mk.id; });
+          if(!mk2) return;
+          mk2[inp.dataset.prop]=+inp.value;
+          if(inp.dataset.prop==='size') document.getElementById('pp-size').textContent=inp.value;
+          if(inp.dataset.prop==='opacity') document.getElementById('pp-opacity').textContent=inp.value+'%';
+          renderMarkers();
+        };
+      });
+      panel.querySelector('input[type=checkbox]').onchange=function(){
+        var photo2=photos.find(function(p){ return p.id===currentPhotoId; });
+        var mk2=photo2.markers.find(function(m){ return m.id===mk.id; });
+        if(mk2) mk2.showLabel=this.checked; renderMarkers();
+      };
+      panel.querySelectorAll('[data-prop=color]').forEach(function(sw){
+        sw.onclick=function(e){
+          e.stopPropagation();
+          var photo2=photos.find(function(p){ return p.id===currentPhotoId; });
+          var mk2=photo2.markers.find(function(m){ return m.id===mk.id; });
+          if(mk2) mk2.color=sw.dataset.val; renderMarkers();
+        };
+      });
       $('marker-layer').appendChild(panel);
     }
   });
 }
-function makePropSlider(label,init,min,max,step,onChange,fmt){
-  var row=document.createElement('div'); row.className='prop-row';
-  var lb=document.createElement('span'); lb.className='lbl'; lb.textContent=label;
-  var sl=document.createElement('input'); sl.type='range'; sl.min=min; sl.max=max; sl.step=step; sl.value=init;
-  var vl=document.createElement('span'); vl.className='vl'; vl.textContent=fmt?fmt(init):init;
-  sl.oninput=function(){ var v=+sl.value; vl.textContent=fmt?fmt(v):v; onChange(v); };
-  row.appendChild(lb); row.appendChild(sl); row.appendChild(vl); return row;
-}
-function deleteMarker(id){ var photo=photos.find(function(p){ return p.id===currentPhotoId; }); photo.markers=photo.markers.filter(function(m){ return m.id!==id; }); selectedMarkerId=null; renderMarkers(); }
-window.addEventListener('resize', function(){ if(currentPhotoId) renderMarkers(); });
 
+function deleteMarker(id){
+  var photo=photos.find(function(p){ return p.id===currentPhotoId; });
+  if(photo){ photo.markers=photo.markers.filter(function(m){ return m.id!==id; }); }
+  selectedMarkerId=null; renderMarkers();
+}
+
+/* ── エディタのDropbox・DLボタン ── */
+$('btn-dbx-save').onclick = function(){
+  if(!currentPhotoId){ showToast('写真が選択されていません','err'); return; }
+  openDbxModal({type:'single', id:currentPhotoId});
+};
+$('btn-download').onclick = function(){
+  if(!currentPhotoId) return;
+  var photo=photos.find(function(p){ return p.id===currentPhotoId; });
+  renderToCanvas(photo).then(function(canvas){
+    var a=document.createElement('a');
+    a.href=canvas.toDataURL('image/jpeg',0.95);
+    a.download='marked_'+photo.name.replace(/\.[^.]+$/,'')+'.jpg';
+    a.click();
+  });
+};
+
+/* ── Canvas描画 (マーカー合成) ── */
 function renderToCanvas(photo) {
-  return new Promise(function(resolve, reject){
+  return new Promise(function(resolve, reject) {
     var img = new Image();
-    img.onload = function(){
-      try {
-        var cv = document.createElement('canvas');
-        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-        var ctx = cv.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        var base = Math.min(img.naturalWidth, img.naturalHeight);
-        photo.markers.forEach(function(mk){
-          var sp = Math.max(16, ((mk.size!=null?mk.size:50)/100)*base*0.14);
-          var fs = Math.max(9, sp*0.42);
-          var op = (mk.opacity!=null?mk.opacity:100)/100;
-          var showLbl = mk.showLabel !== false;
-          ctx.save();
-          ctx.globalAlpha = op;
-          ctx.fillStyle = mk.color;
-          ctx.beginPath();
-          ctx.arc(mk.x, mk.y, sp/2, 0, Math.PI*2);
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
-          if (showLbl) {
-            ctx.fillStyle = '#fff';
-            ctx.font = '700 ' + fs + 'px "DM Mono", monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.shadowColor = 'rgba(0,0,0,0.8)';
-            ctx.shadowBlur = 4;
-            ctx.fillText(mk.label, mk.x, mk.y);
-          }
-          ctx.restore();
-        });
-        resolve(cv);
-      } catch(e) {
-        reject(e);
-      }
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+      var canvas = document.createElement('canvas');
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      var base = Math.min(img.naturalWidth, img.naturalHeight);
+      photo.markers.forEach(function(mk) {
+        var sp  = Math.max(16, ((mk.size != null ? mk.size : 50) / 100) * base * 0.14);
+        var fs  = Math.max(9, sp * 0.42);
+        var op  = (mk.opacity != null ? mk.opacity : 100) / 100;
+        var showLbl = mk.showLabel !== false;
+        ctx.save();
+        ctx.globalAlpha = op;
+        ctx.beginPath();
+        ctx.arc(mk.x, mk.y, sp / 2, 0, Math.PI * 2);
+        ctx.fillStyle = mk.color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth   = 2.5;
+        ctx.stroke();
+        if (showLbl && mk.label) {
+          ctx.globalAlpha  = op;
+          ctx.fillStyle    = '#fff';
+          ctx.font         = 'bold ' + fs + 'px "DM Mono", monospace';
+          ctx.textAlign    = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor  = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur   = 4;
+          ctx.fillText(mk.label, mk.x, mk.y);
+          ctx.shadowBlur   = 0;
+        }
+        ctx.restore();
+      });
+      resolve(canvas);
     };
-    img.onerror = function(){ reject(new Error('画像の読み込みに失敗しました')); };
+    img.onerror = function() { reject(new Error('画像の読み込みに失敗しました')); };
     img.src = photo.url;
   });
 }
 
-async function downloadPhoto(photo) {
-  var canvas = await renderToCanvas(photo);
-  var a = document.createElement('a');
-  a.href = canvas.toDataURL('image/jpeg', 0.95);
-  a.download = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
-  a.click();
-}
+/* ── 一括ダウンロード (ZIP) ── */
 async function bulkDownload() {
+  if (!selectedPhotoIds.size) return;
   var targets = photos.filter(function(p){ return selectedPhotoIds.has(p.id); });
-  if (!targets.length) return;
-  if (targets.length === 1) { await downloadPhoto(targets[0]); return; }
   var zip = new JSZip();
-  showProgress('0 / ' + targets.length + ' 枚', 0);
   for (var i = 0; i < targets.length; i++) {
     var canvas = await renderToCanvas(targets[i]);
     var blob   = await canvasToBlob(canvas);
     zip.file('marked_' + targets[i].name.replace(/\.[^.]+$/, '') + '.jpg', blob);
-    showProgress((i+1) + ' / ' + targets.length + ' 枚', (i+1)/targets.length*100);
   }
-  var zipBlob = await zip.generateAsync({type:'blob'});
+  var content = await zip.generateAsync({type:'blob'});
   var a = document.createElement('a');
-  a.href = URL.createObjectURL(zipBlob);
-  a.download = '配筋写真_' + Date.now() + '.zip';
+  a.href = URL.createObjectURL(content);
+  a.download = 'haikin_marked.zip';
   a.click();
-  hideProgress();
 }
 
-$('btn-dbx-save').onclick = function(){ openDbxModal({type:'single', id:currentPhotoId}); };
-$('btn-download').onclick = function(){ var p=photos.find(function(x){ return x.id===currentPhotoId; }); if(p) downloadPhoto(p); };
-
+/* ── トースト ── */
 var toastTimer = null;
 function showToast(msg, type) {
-  if (!type) type = 'inf';
   var t = $('toast');
   t.textContent = msg;
-  t.className = 'show ' + type;
+  t.className = 'show ' + (type || 'inf');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(function(){ t.className = type; }, 3500);
+  toastTimer = setTimeout(function(){ t.className = ''; }, 3000);
 }
 
+/* ── 初期化 ── */
 updateDbxBadge();
 dbxHandleCallback();
 </script>
