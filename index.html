@@ -16,51 +16,35 @@ input, select { font-family: 'DM Mono', monospace; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: #161820; }
 ::-webkit-scrollbar-thumb { background: #2A2D35; border-radius: 3px; }
-
-/* HEADER */
 #header { display:flex; align-items:center; gap:10px; padding:10px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; }
 .logo-title { font-size:17px; font-weight:700; letter-spacing:-0.5px; }
 .logo-title span { color:#FF6B00; }
 .logo-sub { font-size:9px; color:#444; letter-spacing:0.1em; margin-top:1px; }
 #header-actions { display:flex; align-items:center; gap:8px; margin-left:auto; flex-wrap:wrap; }
-
-/* Dropbox badge */
 #dbx-badge { display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:20px; background:#1E2130; border:1px solid #2A2D35; font-size:11px; color:#555; cursor:pointer; white-space:nowrap; transition:background 0.15s,border-color 0.15s; }
 #dbx-badge.connected { background:#0D2235; border-color:#0061FE; color:#4DA3FF; }
 #dbx-badge .dbx-dot { width:7px; height:7px; border-radius:50%; background:#444; transition:background 0.15s; }
 #dbx-badge.connected .dbx-dot { background:#0061FE; }
-
-/* BUTTONS */
 .btn { padding:7px 13px; border-radius:7px; font-size:12px; font-weight:700; white-space:nowrap; }
 .btn-primary   { background:#FF6B00; color:#fff; }
 .btn-secondary { background:#2A2D35; color:#C8CADC; }
 .btn-dbx       { background:#0061FE; color:#fff; }
 .btn:disabled  { opacity:0.4; cursor:not-allowed; }
-
-/* VIEWS */
 #view-upload, #view-gallery, #view-editor { flex:1; overflow:hidden; display:none; flex-direction:column; }
 #view-upload.active, #view-gallery.active, #view-editor.active { display:flex; }
-
-/* SETUP NOTICE */
 #setup-notice { background:#0A1A30; border:1px solid #0061FE; border-radius:10px; margin:12px; padding:14px 16px; font-size:11px; color:#4DA3FF; line-height:1.8; flex-shrink:0; }
 #setup-notice b { color:#fff; }
 #setup-notice code { background:#0F2040; padding:1px 6px; border-radius:3px; font-size:11px; }
 #setup-notice.hidden { display:none; }
-
-/* UPLOAD */
 #drop-zone { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; cursor:pointer; padding:32px; user-select:none; }
 .upload-icon { width:96px; height:96px; border-radius:24px; background:linear-gradient(135deg,#FF6B00,#FF8C00); display:flex; align-items:center; justify-content:center; font-size:40px; box-shadow:0 8px 32px rgba(255,107,0,0.3); }
 .upload-title { font-size:18px; font-weight:700; text-align:center; margin-bottom:6px; }
 .upload-sub { font-size:12px; color:#555; text-align:center; }
 .drop-hint { border:2px dashed #2A2D35; border-radius:16px; padding:20px 40px; color:#3A3D4A; font-size:12px; }
 #drop-zone.drag-over { background:rgba(255,107,0,0.07); }
-
-/* STATS */
 #stats-bar { display:flex; gap:14px; padding:7px 14px; align-items:center; background:#161820; border-bottom:1px solid #1E2130; font-size:11px; color:#555; flex-shrink:0; flex-wrap:wrap; }
 #stats-bar .accent { color:#FF6B00; }
 #stats-bar .hint   { margin-left:auto; color:#333; }
-
-/* GALLERY */
 #gallery-scroll { flex:1; overflow-y:auto; }
 #gallery-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; padding:14px; }
 .photo-card { border-radius:10px; border:2px solid #2A2D35; background:#161820; position:relative; transition:border 0.15s,box-shadow 0.15s; }
@@ -73,17 +57,11 @@ input, select { font-family: 'DM Mono', monospace; }
 .card-name    { color:#C8CADC; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .card-markers { color:#FF6B00; font-size:11px; margin-top:2px; }
 .card-edit-btn { width:calc(100% - 16px); margin:4px 8px 8px; display:block; text-align:center; }
-
-/* GALLERY BULK BAR */
 #gallery-actions { display:flex; gap:8px; padding:8px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; align-items:center; }
 #gallery-actions.hidden { display:none; }
 #gallery-actions span { font-size:12px; color:#8B8FA8; }
-
-/* EDITOR */
 #editor-topbar { display:flex; align-items:center; gap:10px; padding:10px 14px; background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; flex-wrap:wrap; }
 #editor-filename { color:#8B8FA8; font-size:12px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-/* TOOLBAR */
 #editor-toolbar { background:#161820; border-bottom:1px solid #2A2D35; flex-shrink:0; }
 .toolbar-row { display:flex; align-items:center; gap:10px; padding:8px 14px; flex-wrap:wrap; }
 .toolbar-row + .toolbar-row { border-top:1px solid #1E2130; }
@@ -104,8 +82,6 @@ input[type=range] { -webkit-appearance:none; width:90px; height:4px; border-radi
 input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#FF6B00; cursor:pointer; border:2px solid #fff; }
 input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%; background:#FF6B00; border:2px solid #fff; }
 #marker-count-badge { font-size:11px; color:#555; white-space:nowrap; }
-
-/* EDITOR CANVAS */
 #editor-scroll { flex:1; overflow:auto; display:flex; justify-content:center; padding:14px; }
 #editor-canvas-wrap { position:relative; display:inline-block; max-width:100%; align-self:flex-start; }
 #editor-img { display:block; max-width:100%; height:auto; user-select:none; pointer-events:none; }
@@ -119,8 +95,6 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
 .prop-row input[type=range] { width:85px; }
 .prop-row .vl { color:#FF6B00; min-width:32px; text-align:right; }
 .prop-row input[type=checkbox] { accent-color:#FF6B00; width:14px; height:14px; cursor:pointer; flex-shrink:0; }
-
-/* DROPBOX FOLDER MODAL */
 #dbx-modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:200; display:flex; align-items:center; justify-content:center; }
 #dbx-modal-bg.hidden { display:none; }
 #dbx-modal { background:#161820; border:1px solid #2A2D35; border-radius:14px; padding:24px; width:min(400px,92vw); display:flex; flex-direction:column; gap:16px; }
@@ -130,15 +104,11 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
 #dbx-folder-input:focus { border-color:#0061FE; }
 .dbx-modal-row { display:flex; gap:8px; }
 .dbx-example { font-size:10px; color:#444; margin-top:-8px; }
-
-/* PROGRESS BAR */
 #progress-wrap { display:none; position:fixed; bottom:60px; left:50%; transform:translateX(-50%); background:#1E2130; border:1px solid #2A2D35; border-radius:12px; padding:14px 20px; z-index:300; min-width:260px; }
 #progress-wrap.show { display:block; }
 #progress-label { font-size:12px; color:#C8CADC; margin-bottom:8px; text-align:center; }
 #progress-bar-bg { background:#2A2D35; border-radius:4px; height:6px; overflow:hidden; }
 #progress-bar { background:#0061FE; height:6px; border-radius:4px; width:0%; transition:width 0.3s; }
-
-/* TOAST */
 #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); padding:9px 20px; border-radius:20px; font-size:12px; font-weight:700; white-space:nowrap; z-index:400; pointer-events:none; opacity:0; transition:opacity 0.25s; max-width:90vw; text-align:center; }
 #toast.show { opacity:1; }
 #toast.ok  { background:#00C853; color:#fff; }
@@ -148,7 +118,6 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
 </head>
 <body>
 
-<!-- HEADER -->
 <div id="header">
   <div>
     <div class="logo-title"><span>⬡</span> 配筋マーカー</div>
@@ -165,17 +134,8 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
   </div>
 </div>
 
-<!-- SETUP NOTICE -->
-<div id="setup-notice">
-  ⚙️ <b>Dropbox連携の初期設定：</b>
-  HTMLファイルの先頭の <code>DROPBOX_APP_KEY</code> を取得したApp Keyに書き換えてください。<br>
-  手順: <b>①</b> <a href="https://www.dropbox.com/developers/apps" target="_blank" style="color:#4DA3FF">dropbox.com/developers/apps</a> → Create app → Scoped / Full Dropbox →
-  <b>②</b> Permissionsタブで <code>files.content.write</code> にチェック →
-  <b>③</b> SettingsタブのApp keyをコピー →
-  <b>④</b> Redirect URIsにこのHTMLのURLを追加
-</div>
+<div id="setup-notice" class="hidden"></div>
 
-<!-- UPLOAD VIEW -->
 <div id="view-upload" class="active">
   <div id="drop-zone">
     <div class="upload-icon">📷</div>
@@ -187,7 +147,6 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
   </div>
 </div>
 
-<!-- GALLERY VIEW -->
 <div id="view-gallery">
   <div id="stats-bar">
     <span>写真 <span class="accent" id="stat-total">0</span> 枚</span>
@@ -205,7 +164,6 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
   </div>
 </div>
 
-<!-- EDITOR VIEW -->
 <div id="view-editor">
   <div id="editor-topbar">
     <button class="btn btn-secondary" id="btn-back">← 戻る</button>
@@ -249,7 +207,6 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
   </div>
 </div>
 
-<!-- Dropbox folder modal -->
 <div id="dbx-modal-bg" class="hidden">
   <div id="dbx-modal">
     <h3>☁ Dropboxの保存先フォルダ</h3>
@@ -263,26 +220,39 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
   </div>
 </div>
 
-<!-- Progress -->
 <div id="progress-wrap">
   <div id="progress-label">アップロード中…</div>
   <div id="progress-bar-bg"><div id="progress-bar"></div></div>
 </div>
 
-<!-- Toast -->
 <div id="toast"></div>
 
 <script>
 // ============================================================
-//  ★ Dropbox開発者ページで取得したApp Keyをここに設定してください
+//  App Key
 // ============================================================
 const DROPBOX_APP_KEY = 'c5xn5alzj04ola4';
 // ============================================================
 
 const DBX_ENABLED = DROPBOX_APP_KEY !== 'YOUR_APP_KEY_HERE';
 
+// ===== ストレージ helper（localStorage/sessionStorage 両対応）=====
+function storageGet(key) {
+  try { const v = localStorage.getItem(key); if (v !== null) return v; } catch(e) {}
+  try { return sessionStorage.getItem(key); } catch(e) {}
+  return null;
+}
+function storageSet(key, val) {
+  try { localStorage.setItem(key, val); return; } catch(e) {}
+  try { sessionStorage.setItem(key, val); } catch(e) {}
+}
+function storageRemove(key) {
+  try { localStorage.removeItem(key); } catch(e) {}
+  try { sessionStorage.removeItem(key); } catch(e) {}
+}
+
 // ===== DROPBOX PKCE OAuth =====
-let dbxToken = localStorage.getItem('dbx_token') || null;
+let dbxToken = storageGet('dbx_token') || null;
 let dbxPendingAction = null;
 
 function updateDbxBadge() {
@@ -300,8 +270,8 @@ async function dbxToggle() {
   if (!DBX_ENABLED) { showToast('先にApp Keyを設定してください', 'err'); return; }
   if (dbxToken) {
     if (confirm('Dropboxの接続を切断しますか？')) {
-      localStorage.removeItem('dbx_token');
-      localStorage.removeItem('dbx_pkce_verifier');
+      storageRemove('dbx_token');
+      storageRemove('dbx_pkce_verifier');
       dbxToken = null;
       updateDbxBadge();
       showToast('切断しました', 'inf');
@@ -314,9 +284,8 @@ async function dbxToggle() {
 async function dbxStartAuth() {
   const verifier  = generateVerifier();
   const challenge = await generateChallenge(verifier);
-  localStorage.setItem('dbx_pkce_verifier', verifier);
-  // save current page state hint
-  localStorage.setItem('dbx_return', 'auth');
+  storageSet('dbx_pkce_verifier', verifier);
+  storageSet('dbx_return', 'auth');
   const redirectUri = window.location.href.split('?')[0].split('#')[0];
   const url = 'https://www.dropbox.com/oauth2/authorize?' + new URLSearchParams({
     client_id:             DROPBOX_APP_KEY,
@@ -332,10 +301,9 @@ async function dbxStartAuth() {
 async function dbxHandleCallback() {
   const params   = new URLSearchParams(window.location.search);
   const code     = params.get('code');
-  const verifier = localStorage.getItem('dbx_pkce_verifier');
+  const verifier = storageGet('dbx_pkce_verifier');
   if (!code || !verifier) return;
 
-  // Clean URL
   window.history.replaceState({}, document.title, window.location.pathname);
 
   const redirectUri = window.location.href.split('?')[0].split('#')[0];
@@ -354,9 +322,9 @@ async function dbxHandleCallback() {
     const data = await res.json();
     if (data.access_token) {
       dbxToken = data.access_token;
-      localStorage.setItem('dbx_token', dbxToken);
-      localStorage.removeItem('dbx_pkce_verifier');
-      localStorage.removeItem('dbx_return');
+      storageSet('dbx_token', dbxToken);
+      storageRemove('dbx_pkce_verifier');
+      storageRemove('dbx_return');
       updateDbxBadge();
       showToast('Dropboxに接続しました ✓', 'ok');
     } else {
@@ -365,7 +333,6 @@ async function dbxHandleCallback() {
   } catch(e) { showToast('通信エラー: ' + e.message, 'err'); }
 }
 
-// PKCE helpers
 function generateVerifier() {
   const arr = new Uint8Array(32);
   crypto.getRandomValues(arr);
@@ -377,7 +344,6 @@ async function generateChallenge(verifier) {
   return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
 
-// Upload single file blob to Dropbox
 async function dbxUpload(path, blob) {
   const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
     method: 'POST',
@@ -391,8 +357,7 @@ async function dbxUpload(path, blob) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     if (res.status === 401) {
-      // Token expired
-      localStorage.removeItem('dbx_token');
+      storageRemove('dbx_token');
       dbxToken = null; updateDbxBadge();
       throw new Error('認証期限切れ。再度サインインしてください。');
     }
@@ -401,7 +366,6 @@ async function dbxUpload(path, blob) {
   return await res.json();
 }
 
-// ===== MODAL =====
 function openDbxModal(action) {
   if (!DBX_ENABLED) { showToast('先にApp Keyを設定してください', 'err'); return; }
   if (!dbxToken)    { showToast('先にDropboxに接続してください', 'inf'); dbxStartAuth(); return; }
@@ -446,7 +410,6 @@ $('btn-dbx-confirm').onclick = async () => {
   }
 };
 
-// ===== PROGRESS =====
 function showProgress(label, pct) {
   $('progress-wrap').classList.add('show');
   $('progress-label').textContent = label;
@@ -454,7 +417,6 @@ function showProgress(label, pct) {
 }
 function hideProgress() { $('progress-wrap').classList.remove('show'); }
 
-// ===== CANVAS BLOB HELPER =====
 function canvasToBlob(canvas) {
   return new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
 }
@@ -469,10 +431,8 @@ let imgNaturalW = 0, imgNaturalH = 0;
 const uid = () => Math.random().toString(36).substr(2, 9);
 function $(id) { return document.getElementById(id); }
 
-// ===== VIEWS =====
 function showView(n) { ['upload','gallery','editor'].forEach(v => $('view-'+v).classList.remove('active')); $('view-'+n).classList.add('active'); }
 
-// ===== FILES =====
 function loadFiles(files) {
   const imgs = Array.from(files).filter(f => f.type.startsWith('image/')); if (!imgs.length) return;
   let loaded = 0;
@@ -488,7 +448,6 @@ $('drop-zone').onclick = () => $('file-input').click();
 ['dragover','dragenter'].forEach(ev => document.addEventListener(ev, e=>{e.preventDefault();$('drop-zone').classList.add('drag-over');}));
 ['dragleave','drop'].forEach(ev => document.addEventListener(ev, e=>{e.preventDefault();$('drop-zone').classList.remove('drag-over');if(ev==='drop')loadFiles(e.dataTransfer.files);}));
 
-// ===== GALLERY =====
 function renderGallery() {
   $('stat-total').textContent    = photos.length;
   $('stat-selected').textContent = selectedPhotoIds.size;
@@ -531,7 +490,6 @@ $('btn-select-all').onclick = () => { selectedPhotoIds.size===photos.length?sele
 $('btn-bulk-dl2').onclick  = () => bulkDownload();
 $('btn-bulk-dbx').onclick  = () => openDbxModal({ type:'bulk', ids:[...selectedPhotoIds] });
 
-// ===== COLOR SWATCHES =====
 const swatchWrap = $('color-swatches');
 COLORS.forEach(c => {
   const sw = document.createElement('div');
@@ -540,18 +498,15 @@ COLORS.forEach(c => {
   swatchWrap.appendChild(sw);
 });
 
-// ===== LABEL TOGGLE =====
 $('toggle-label').onclick = () => {
   currentShowLabel = !currentShowLabel;
   $('toggle-label').classList.toggle('on', currentShowLabel);
   $('toggle-label-text').textContent = currentShowLabel ? '番号あり' : '番号なし';
 };
 
-// ===== SLIDERS =====
 $('slider-size').oninput    = () => { currentSize=+$('slider-size').value; $('val-size').textContent=currentSize; };
 $('slider-opacity').oninput = () => { currentOpacity=+$('slider-opacity').value; $('val-opacity').textContent=currentOpacity+'%'; };
 
-// ===== EDITOR =====
 function openEditor(id) {
   currentPhotoId=id; selectedMarkerId=null;
   const photo=photos.find(p=>p.id===id);
@@ -596,7 +551,6 @@ $('editor-canvas-wrap').addEventListener('click', e=>{
   if(!e.target.closest('.marker-dot')&&!e.target.closest('.prop-panel')){selectedMarkerId=null;renderMarkers();}
 });
 
-// ===== RENDER MARKERS =====
 function renderMarkers() {
   const photo=photos.find(p=>p.id===currentPhotoId); if(!photo) return;
   $('marker-layer').innerHTML='';
@@ -643,57 +597,92 @@ function deleteMarker(id){const photo=photos.find(p=>p.id===currentPhotoId);phot
 window.addEventListener('resize',()=>{if(currentPhotoId)renderMarkers();});
 
 // ===== RENDER TO CANVAS =====
-function renderToCanvas(photo){
-  return new Promise(resolve=>{
-    const img=new Image();img.onload=()=>{
-      const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
-      const ctx=cv.getContext('2d');ctx.drawImage(img,0,0);
-      const base=Math.min(img.naturalWidth,img.naturalHeight);
-      photo.markers.forEach(mk=>{
-        const ms=Math.max(16,((mk.size??50)/100)*base*0.14),op=(mk.opacity??100)/100,showLbl=mk.showLabel!==false;
-        ctx.save();ctx.globalAlpha=op;
-        ctx.beginPath();ctx.arc(mk.x,mk.y,ms/2,0,Math.PI*2);ctx.fillStyle=mk.color;ctx.fill();
-        ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=ms*0.07;ctx.stroke();
-        if(showLbl){ctx.globalAlpha=Math.max(op,0.9);ctx.fillStyle='#fff';ctx.font=`bold ${ms*0.44}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,0.7)';ctx.shadowBlur=ms*0.15;ctx.fillText(mk.label,mk.x,mk.y);}
+function renderToCanvas(photo) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas');
+      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      const ctx = cv.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const base = Math.min(img.naturalWidth, img.naturalHeight);
+      photo.markers.forEach(mk => {
+        const sp = Math.max(16, ((mk.size??50)/100)*base*0.14);
+        const fs = Math.max(9, sp*0.42);
+        const op = (mk.opacity??100)/100;
+        const showLbl = mk.showLabel !== false;
+        ctx.save();
+        ctx.globalAlpha = op;
+        ctx.fillStyle = mk.color;
+        ctx.beginPath();
+        ctx.arc(mk.x, mk.y, sp/2, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        if (showLbl) {
+          ctx.globalAlpha = op;
+          ctx.fillStyle = '#fff';
+          ctx.font = `700 ${fs}px "DM Mono", monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur = 4;
+          ctx.fillText(mk.label, mk.x, mk.y);
+        }
         ctx.restore();
       });
       resolve(cv);
-    };img.src=photo.url;
+    };
+    img.src = photo.url;
   });
 }
 
 // ===== DOWNLOAD =====
-async function downloadPhoto(photo){
-  const cv=await renderToCanvas(photo);
-  const a=document.createElement('a');a.href=cv.toDataURL('image/jpeg',0.95);a.download='marked_'+photo.name;
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
+async function downloadPhoto(photo) {
+  const canvas = await renderToCanvas(photo);
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/jpeg', 0.95);
+  a.download = 'marked_' + photo.name.replace(/\.[^.]+$/, '') + '.jpg';
+  a.click();
 }
-async function bulkDownload(){
-  const targets=photos.filter(p=>selectedPhotoIds.has(p.id));if(!targets.length)return;
-  if(targets.length===1){await downloadPhoto(targets[0]);return;}
-  const zip=new JSZip();
-  for(const photo of targets){const cv=await renderToCanvas(photo);zip.file('marked_'+photo.name.replace(/\.[^.]+$/,'')+'.jpg',cv.toDataURL('image/jpeg',0.95).split(',')[1],{base64:true});}
-  const blob=await zip.generateAsync({type:'blob'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='marked_photos.zip';
-  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);document.body.removeChild(a);},1000);
+
+async function bulkDownload() {
+  const targets = photos.filter(p => selectedPhotoIds.has(p.id));
+  if (!targets.length) return;
+  if (targets.length === 1) { await downloadPhoto(targets[0]); return; }
+  const zip = new JSZip();
+  showProgress(`0 / ${targets.length} 枚`, 0);
+  for (let i = 0; i < targets.length; i++) {
+    const canvas = await renderToCanvas(targets[i]);
+    const blob   = await canvasToBlob(canvas);
+    zip.file('marked_' + targets[i].name.replace(/\.[^.]+$/, '') + '.jpg', blob);
+    showProgress(`${i+1} / ${targets.length} 枚`, (i+1)/targets.length*100);
+  }
+  const zipBlob = await zip.generateAsync({type:'blob'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(zipBlob);
+  a.download = '配筋写真_' + Date.now() + '.zip';
+  a.click();
+  hideProgress();
 }
-$('btn-download').onclick = async()=>{await downloadPhoto(photos.find(p=>p.id===currentPhotoId));};
-$('btn-dbx-save').onclick = ()=>openDbxModal({type:'single', id:currentPhotoId});
+
+$('btn-dbx-save').onclick  = () => openDbxModal({ type:'single', id:currentPhotoId });
+$('btn-download').onclick  = () => { const p=photos.find(x=>x.id===currentPhotoId); if(p) downloadPhoto(p); };
 
 // ===== TOAST =====
-let toastTimer;
-function showToast(msg,type='ok'){
-  const t=$('toast');t.textContent=msg;t.className='show '+type;
-  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.className='',3500);
+let toastTimer = null;
+function showToast(msg, type='inf') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = type; }, 3000);
 }
 
 // ===== INIT =====
-if (DBX_ENABLED) {
-  $('setup-notice').classList.add('hidden');
-  dbxHandleCallback(); // handle OAuth redirect
-}
 updateDbxBadge();
-renderGallery();
+dbxHandleCallback();
 </script>
 </body>
 </html>
