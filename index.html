@@ -88,10 +88,12 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
 #editor-canvas-wrap { position:relative; display:inline-block; max-width:100%; align-self:flex-start; }
 #editor-img { display:block; max-width:100%; height:auto; user-select:none; pointer-events:none; }
 #marker-layer { position:absolute; top:0; left:0; width:100%; height:100%; }
-.marker-dot { position:absolute; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,0.8); cursor:pointer; user-select:none; transform:translate(-50%,-50%); border:2.5px solid rgba(0,0,0,0.4); box-shadow:0 2px 8px rgba(0,0,0,0.35); transition:box-shadow 0.12s; letter-spacing:-0.5px; }
+.marker-dot { position:absolute; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,0.8); cursor:pointer; user-select:none; transform:translate(-50%,-50%); border:2.5px solid rgba(0,0,0,0.4); box-shadow:0 2px 8px rgba(0,0,0,0.35); transition:box-shadow 0.12s; letter-spacing:-0.5px; touch-action:none; }
 .marker-dot.selected { border:3px solid #fff !important; z-index:20; }
 .marker-del-btn { position:absolute; top:-9px; right:-9px; width:19px; height:19px; border-radius:50%; background:#FF1744; border:2px solid #fff; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; cursor:pointer; z-index:30; opacity:1 !important; }
-.prop-panel { position:absolute; background:#1E2130; border:1px solid #2A2D35; border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; z-index:50; min-width:205px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:all; transform:translateX(-50%); }
+.leader-handle { position:absolute; width:14px; height:14px; border-radius:50%; border:2.5px solid #fff; cursor:grab; transform:translate(-50%,-50%); z-index:22; box-shadow:0 2px 6px rgba(0,0,0,0.5); touch-action:none; }
+.leader-handle:active { cursor:grabbing; }
+.prop-panel { position:absolute; background:#1E2130; border:1px solid #2A2D35; border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; z-index:50; min-width:205px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:all; }
 .prop-row { display:flex; align-items:center; gap:8px; font-size:11px; color:#8B8FA8; }
 .prop-row span.lbl { min-width:44px; }
 .prop-row input[type=range] { width:85px; }
@@ -210,6 +212,7 @@ input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%
   <div id="editor-scroll">
     <div id="editor-canvas-wrap">
       <img id="editor-img" src="" alt="">
+      <svg id="leader-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;"></svg>
       <div id="marker-layer"></div>
     </div>
   </div>
@@ -445,6 +448,8 @@ var photos = [], selectedPhotoIds = new Set(), currentPhotoId = null;
 var currentMode = 'add', currentColor = COLORS[0], currentShowLabel = true;
 var currentSize = 50, currentOpacity = 100, selectedMarkerId = null;
 var imgNaturalW = 0, imgNaturalH = 0;
+var _markerDragMoved = false; // ドラッグ後の誤click抑制フラグ
+var _undoStack = []; // Undo スタック（写真IDとマーカー配列のスナップショット）
 function uid(){ return Math.random().toString(36).substr(2,9); }
 function $(id){ return document.getElementById(id); }
 function showView(n){ ['upload','gallery','editor'].forEach(function(v){ $('view-'+v).classList.remove('active'); }); $('view-'+n).classList.add('active'); }
@@ -492,7 +497,12 @@ function renderGallery() {
   $('gallery-grid').querySelectorAll('[data-id]').forEach(function(el){ el.addEventListener('click', function(e){ e.stopPropagation(); toggleSelect(el.dataset.id); }); });
   if (!photos.length) showView('upload');
 }
-function deletePhoto(id){ photos=photos.filter(function(p){ return p.id!==id; }); selectedPhotoIds.delete(id); renderGallery(); }
+function deletePhoto(id){
+  var photo=photos.find(function(p){ return p.id===id; });
+  var name=photo?photo.name:'この写真';
+  if(!confirm(name+' を削除しますか？')) return;
+  photos=photos.filter(function(p){ return p.id!==id; }); selectedPhotoIds.delete(id); renderGallery();
+}
 function toggleSelect(id){ selectedPhotoIds.has(id)?selectedPhotoIds.delete(id):selectedPhotoIds.add(id); renderGallery(); }
 $('btn-select-all').onclick = function(){ selectedPhotoIds.size===photos.length ? selectedPhotoIds.clear() : photos.forEach(function(p){ selectedPhotoIds.add(p.id); }); renderGallery(); };
 $('btn-bulk-dl2').onclick   = function(){ bulkDownload(); };
@@ -508,8 +518,24 @@ COLORS.forEach(function(c){
   swatchWrap.appendChild(sw);
 });
 $('toggle-label').onclick   = function(){ currentShowLabel=!currentShowLabel; $('toggle-label').classList.toggle('on',currentShowLabel); $('toggle-label-text').textContent=currentShowLabel?'番号あり':'番号なし'; };
-$('slider-size').oninput    = function(){ currentSize=+$('slider-size').value; $('val-size').textContent=currentSize; };
-$('slider-opacity').oninput = function(){ currentOpacity=+$('slider-opacity').value; $('val-opacity').textContent=currentOpacity+'%'; };
+$('slider-size').oninput = function(){
+  currentSize=+$('slider-size').value; $('val-size').textContent=currentSize;
+  // 選択中マーカーにも即時反映
+  if(selectedMarkerId && currentMode==='select'){
+    var p=photos.find(function(p){ return p.id===currentPhotoId; });
+    var m=p&&p.markers.find(function(m){ return m.id===selectedMarkerId; });
+    if(m){ m.size=currentSize; renderMarkers(); }
+  }
+};
+$('slider-opacity').oninput = function(){
+  currentOpacity=+$('slider-opacity').value; $('val-opacity').textContent=currentOpacity+'%';
+  // 選択中マーカーにも即時反映
+  if(selectedMarkerId && currentMode==='select'){
+    var p=photos.find(function(p){ return p.id===currentPhotoId; });
+    var m=p&&p.markers.find(function(m){ return m.id===selectedMarkerId; });
+    if(m){ m.opacity=currentOpacity; renderMarkers(); }
+  }
+};
 
 /* ── エディタ ── */
 
@@ -554,6 +580,7 @@ $('btn-mode-add').onclick    = function(){ setMode('add'); };
 $('btn-mode-select').onclick = function(){ setMode('select'); };
 
 function addMarker(cx,cy) {
+  saveUndo();
   var rect=$('editor-img').getBoundingClientRect();
   var x=(cx-rect.left)*(imgNaturalW/rect.width), y=(cy-rect.top)*(imgNaturalH/rect.height);
   var lbl=$('label-input').value.trim()||'1';
@@ -585,32 +612,86 @@ function renderMarkers() {
       var db=document.createElement('div'); db.className='marker-del-btn'; db.textContent='×'; db.style.opacity='1';
       db.onclick=function(e){ e.stopPropagation(); deleteMarker(mk.id); }; dot.appendChild(db);
     }
-    dot.onclick=function(e){ e.stopPropagation(); if(currentMode==='add') return; selectedMarkerId=selectedMarkerId===mk.id?null:mk.id; renderMarkers(); };
+    // 選択モードでドラッグ移動
+    dot.addEventListener('pointerdown', function(e){
+      if(currentMode!=='select') return;
+      e.stopPropagation();
+      dot.setPointerCapture(e.pointerId);
+      dot._ds={x:e.clientX,y:e.clientY,ox:mk.x,oy:mk.y,moved:false,undoSaved:false};
+      selectedMarkerId=mk.id;
+    });
+    dot.addEventListener('pointermove', function(e){
+      if(!dot._ds) return;
+      var dx=e.clientX-dot._ds.x, dy=e.clientY-dot._ds.y;
+      if(!dot._ds.moved&&(Math.abs(dx)>4||Math.abs(dy)>4)){ dot._ds.moved=true; if(!dot._ds.undoSaved){ saveUndo(); dot._ds.undoSaved=true; } }
+      if(!dot._ds.moved) return;
+      var p2=photos.find(function(p){ return p.id===currentPhotoId; });
+      var m2=p2&&p2.markers.find(function(m){ return m.id===mk.id; });
+      if(m2){ m2.x=dot._ds.ox+dx/sX; m2.y=dot._ds.oy+dy/sY; }
+      dot.style.left=(dot._ds.ox+dx/sX)*sX+'px';
+      dot.style.top=(dot._ds.oy+dy/sY)*sY+'px';
+    });
+    dot.addEventListener('pointerup', function(e){
+      if(!dot._ds) return;
+      var moved=dot._ds.moved; dot._ds=null;
+      if(moved){ _markerDragMoved=true; renderMarkers(); }
+    });
+    dot.onclick=function(e){
+      e.stopPropagation();
+      if(currentMode==='add') return;
+      if(_markerDragMoved){ _markerDragMoved=false; return; }
+      selectedMarkerId=selectedMarkerId===mk.id?null:mk.id; renderMarkers();
+    };
     $('marker-layer').appendChild(dot);
     if(sel){
       var panel=document.createElement('div'); panel.className='prop-panel';
       var leftPx=mk.x*sX, topPx=mk.y*sY;
-      panel.style.cssText='left:'+leftPx+'px;top:'+(topPx+sp/2+10)+'px;';
+      panel.style.left=leftPx+'px'; panel.style.top=(topPx+sp/2+10)+'px';
       panel.innerHTML=
         '<div class="prop-row"><span class="lbl">サイズ</span><input type="range" min="20" max="120" step="5" value="'+mk.size+'" data-prop="size"><span class="vl" id="pp-size">'+mk.size+'</span></div>'+
         '<div class="prop-row"><span class="lbl">透明度</span><input type="range" min="10" max="100" step="5" value="'+mk.opacity+'" data-prop="opacity"><span class="vl" id="pp-opacity">'+mk.opacity+'%</span></div>'+
         '<div class="prop-row"><span class="lbl">番号表示</span><input type="checkbox" '+(showLbl?'checked':'')+' data-prop="showLabel"></div>'+
+        '<div class="prop-row"><span class="lbl">引き出し線</span><input type="checkbox" '+(mk.leader?'checked':'')+' data-prop="leader"></div>'+
         '<div class="prop-row" style="flex-wrap:wrap;gap:5px;">'+ COLORS.map(function(c){ return '<div class="color-swatch'+(c===mk.color?' active':'')+'" style="background:'+c+';--c:'+c+';" data-prop="color" data-val="'+c+'"></div>'; }).join('')+'</div>';
       panel.querySelectorAll('input[type=range]').forEach(function(inp){
         inp.oninput=function(){
           var photo2=photos.find(function(p){ return p.id===currentPhotoId; });
-          var mk2=photo2.markers.find(function(m){ return m.id===mk.id; });
+          var mk2=photo2&&photo2.markers.find(function(m){ return m.id===mk.id; });
           if(!mk2) return;
           mk2[inp.dataset.prop]=+inp.value;
-          if(inp.dataset.prop==='size') document.getElementById('pp-size').textContent=inp.value;
-          if(inp.dataset.prop==='opacity') document.getElementById('pp-opacity').textContent=inp.value+'%';
-          renderMarkers();
+          if(inp.dataset.prop==='size'){
+            document.getElementById('pp-size').textContent=inp.value;
+            // ドットサイズだけ直接更新（ちらつき防止）
+            var base2=Math.min($('editor-img').offsetWidth,$('editor-img').offsetHeight);
+            var sp2=Math.max(16,(mk2.size/100)*base2*0.14);
+            dot.style.width=sp2+'px'; dot.style.height=sp2+'px';
+            dot.style.fontSize=Math.max(9,sp2*0.42)+'px';
+          }
+          if(inp.dataset.prop==='opacity'){
+            document.getElementById('pp-opacity').textContent=inp.value+'%';
+            dot.style.opacity=mk2.opacity/100;
+          }
         };
+        // スライダーを離したときだけ完全再描画（パネル位置を正確に更新）
+        inp.onchange=function(){ renderMarkers(); };
       });
-      panel.querySelector('input[type=checkbox]').onchange=function(){
+      panel.querySelector('[data-prop=showLabel]').onchange=function(){
         var photo2=photos.find(function(p){ return p.id===currentPhotoId; });
         var mk2=photo2.markers.find(function(m){ return m.id===mk.id; });
         if(mk2) mk2.showLabel=this.checked; renderMarkers();
+      };
+      panel.querySelector('[data-prop=leader]').onchange=function(){
+        saveUndo();
+        var photo2=photos.find(function(p){ return p.id===currentPhotoId; });
+        var mk2=photo2.markers.find(function(m){ return m.id===mk.id; });
+        if(!mk2) return;
+        if(this.checked){
+          // デフォルト位置: マーカーの右上80px・上60px（画像座標に変換）
+          mk2.leader={ x: mk.x + 80/sX, y: mk.y - 60/sY };
+        } else {
+          mk2.leader=null;
+        }
+        renderMarkers();
       };
       panel.querySelectorAll('[data-prop=color]').forEach(function(sw){
         sw.onclick=function(e){
@@ -621,11 +702,84 @@ function renderMarkers() {
         };
       });
       $('marker-layer').appendChild(panel);
+      // クランプ: パネルが画面・レイヤー外にはみ出さないよう位置を補正
+      (function(){
+        var pw=panel.offsetWidth, ph=panel.offsetHeight;
+        var lw=$('marker-layer').offsetWidth;
+        var cl=leftPx-pw/2; // マーカー中央揃え
+        cl=Math.max(4, Math.min(cl, lw-pw-4));
+        var ct=topPx+sp/2+10;
+        var layerTop=$('marker-layer').getBoundingClientRect().top;
+        if(layerTop+ct+ph>window.innerHeight-8){ ct=Math.max(0, topPx-sp/2-10-ph); }
+        panel.style.left=cl+'px'; panel.style.top=ct+'px';
+      })();
     }
+    // 引き出し線エンドポイントハンドル（リーダーがあるマーカー全てに表示）
+    if(mk.leader){
+      var handle=document.createElement('div'); handle.className='leader-handle';
+      handle.style.left=mk.leader.x*sX+'px'; handle.style.top=mk.leader.y*sY+'px';
+      handle.style.background=mk.color;
+      handle.addEventListener('pointerdown',function(e){
+        e.stopPropagation(); handle.setPointerCapture(e.pointerId);
+        saveUndo();
+        handle._ds={x:e.clientX,y:e.clientY,ox:mk.leader.x,oy:mk.leader.y};
+      });
+      handle.addEventListener('pointermove',function(e){
+        if(!handle._ds) return;
+        var ddx=e.clientX-handle._ds.x, ddy=e.clientY-handle._ds.y;
+        var p2=photos.find(function(p){ return p.id===currentPhotoId; });
+        var m2=p2&&p2.markers.find(function(m){ return m.id===mk.id; });
+        if(m2&&m2.leader){ m2.leader.x=handle._ds.ox+ddx/sX; m2.leader.y=handle._ds.oy+ddy/sY; }
+        handle.style.left=(handle._ds.ox+ddx/sX)*sX+'px';
+        handle.style.top=(handle._ds.oy+ddy/sY)*sY+'px';
+        renderLeaderLines();
+      });
+      handle.addEventListener('pointerup',function(e){
+        if(!handle._ds) return; handle._ds=null; renderMarkers();
+      });
+      $('marker-layer').appendChild(handle);
+    }
+  });
+  renderLeaderLines();
+}
+
+/* ── 引き出し線 SVG 描画 ── */
+function renderLeaderLines(){
+  var svg=$('leader-svg'); if(!svg) return;
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  var photo=photos.find(function(p){ return p.id===currentPhotoId; }); if(!photo) return;
+  var rect=$('editor-img').getBoundingClientRect();
+  var dW=rect.width||$('editor-img').offsetWidth, dH=rect.height||$('editor-img').offsetHeight;
+  var sX=imgNaturalW>0?dW/imgNaturalW:1, sY=imgNaturalH>0?dH/imgNaturalH:1;
+  var base=Math.min(dW,dH);
+  photo.markers.forEach(function(mk){
+    if(!mk.leader) return;
+    var sp=Math.max(16,((mk.size!=null?mk.size:50)/100)*base*0.14);
+    var op=(mk.opacity!=null?mk.opacity:100)/100;
+    var mx=mk.x*sX, my=mk.y*sY;
+    var lx=mk.leader.x*sX, ly=mk.leader.y*sY;
+    var dx=lx-mx, dy=ly-my, len=Math.sqrt(dx*dx+dy*dy);
+    if(len<2) return;
+    var ux=dx/len, uy=dy/len, px=-uy, py=ux;
+    var ah=Math.max(8,sp*0.5), aw=Math.max(4,sp*0.25);
+    var sx2=mx+ux*(sp/2+2), sy2=my+uy*(sp/2+2);
+    var ex=lx-ux*ah, ey=ly-uy*ah;
+    var NS='http://www.w3.org/2000/svg';
+    var line=document.createElementNS(NS,'line');
+    line.setAttribute('x1',sx2); line.setAttribute('y1',sy2);
+    line.setAttribute('x2',ex);  line.setAttribute('y2',ey);
+    line.setAttribute('stroke',mk.color); line.setAttribute('stroke-width',Math.max(2,sp*0.07).toFixed(1));
+    line.setAttribute('stroke-linecap','round'); line.setAttribute('opacity',op);
+    svg.appendChild(line);
+    var poly=document.createElementNS(NS,'polygon');
+    poly.setAttribute('points',lx+','+ly+' '+(ex-px*aw)+','+(ey-py*aw)+' '+(ex+px*aw)+','+(ey+py*aw));
+    poly.setAttribute('fill',mk.color); poly.setAttribute('opacity',op);
+    svg.appendChild(poly);
   });
 }
 
 function deleteMarker(id){
+  saveUndo();
   var photo=photos.find(function(p){ return p.id===currentPhotoId; });
   if(photo){ photo.markers=photo.markers.filter(function(m){ return m.id!==id; }); }
   selectedMarkerId=null; renderMarkers();
@@ -664,6 +818,28 @@ function renderToCanvas(photo) {
         var fs  = Math.max(9, sp * 0.42);
         var op  = (mk.opacity != null ? mk.opacity : 100) / 100;
         var showLbl = mk.showLabel !== false;
+        // 引き出し線を先に描画（スタンプが上に重なる）
+        if(mk.leader){
+          var lx=mk.leader.x, ly=mk.leader.y;
+          var ddx=lx-mk.x, ddy=ly-mk.y, len=Math.sqrt(ddx*ddx+ddy*ddy);
+          if(len>2){
+            var ux=ddx/len, uy=ddy/len, px=-uy, py=ux;
+            var ah=Math.max(16,sp*0.5), aw=Math.max(8,sp*0.25);
+            var lw=Math.max(2,sp*0.07);
+            var sx2=mk.x+ux*(sp/2+2), sy2=mk.y+uy*(sp/2+2);
+            var ex=lx-ux*ah, ey=ly-uy*ah;
+            ctx.save(); ctx.globalAlpha=op;
+            ctx.strokeStyle=mk.color; ctx.lineWidth=lw; ctx.lineCap='round';
+            ctx.beginPath(); ctx.moveTo(sx2,sy2); ctx.lineTo(ex,ey); ctx.stroke();
+            ctx.fillStyle=mk.color;
+            ctx.beginPath();
+            ctx.moveTo(lx,ly);
+            ctx.lineTo(ex-px*aw, ey-py*aw);
+            ctx.lineTo(ex+px*aw, ey+py*aw);
+            ctx.closePath(); ctx.fill();
+            ctx.restore();
+          }
+        }
         ctx.save();
         ctx.globalAlpha = op;
         ctx.beginPath();
@@ -698,12 +874,18 @@ async function bulkDownload() {
   if (!selectedPhotoIds.size) return;
   var targets = photos.filter(function(p){ return selectedPhotoIds.has(p.id); });
   var zip = new JSZip();
+  showProgress('画像を処理中… 0 / ' + targets.length, 0);
   for (var i = 0; i < targets.length; i++) {
+    showProgress('画像を処理中… ' + (i+1) + ' / ' + targets.length, (i+1) / targets.length * 80);
     var canvas = await renderToCanvas(targets[i]);
     var blob   = await canvasToBlob(canvas);
     zip.file('marked_' + targets[i].name.replace(/\.[^.]+$/, '') + '.jpg', blob);
   }
-  var content = await zip.generateAsync({type:'blob'});
+  showProgress('ZIPを生成中…', 90);
+  var content = await zip.generateAsync({type:'blob', compression:'DEFLATE'}, function(meta){
+    showProgress('ZIPを生成中… ' + Math.round(meta.percent) + '%', 80 + meta.percent * 0.2);
+  });
+  hideProgress();
   var a = document.createElement('a');
   a.href = URL.createObjectURL(content);
   a.download = 'haikin_marked.zip';
@@ -720,9 +902,55 @@ function showToast(msg, type) {
   toastTimer = setTimeout(function(){ t.className = ''; }, 3000);
 }
 
+/* ── Undo ── */
+function saveUndo(){
+  if(!currentPhotoId) return;
+  var photo=photos.find(function(p){ return p.id===currentPhotoId; });
+  if(!photo) return;
+  _undoStack.push({id:currentPhotoId, markers:JSON.parse(JSON.stringify(photo.markers))});
+  if(_undoStack.length>50) _undoStack.shift(); // 最大50ステップ
+}
+function undoMarker(){
+  // 現在の写真のエントリを末尾から探す
+  for(var i=_undoStack.length-1;i>=0;i--){
+    if(_undoStack[i].id===currentPhotoId){
+      var snap=_undoStack.splice(i,1)[0];
+      var photo=photos.find(function(p){ return p.id===currentPhotoId; });
+      if(photo){ photo.markers=snap.markers; selectedMarkerId=null; renderMarkers(); showToast('元に戻しました','inf'); }
+      return;
+    }
+  }
+  showToast('これ以上戻れません','inf');
+}
+
+/* ── リロード時の警告 ── */
+window.addEventListener('beforeunload', function(e){
+  var hasData = photos.some(function(p){ return p.markers.length>0; });
+  if(hasData){ e.preventDefault(); e.returnValue=''; }
+});
+
 /* ── 初期化 ── */
 updateDbxBadge();
 dbxHandleCallback();
+
+/* ── リサイズ時にマーカーを再描画 ── */
+window.addEventListener('resize', function(){ if(currentPhotoId) renderMarkers(); });
+
+/* ── キーボードショートカット ── */
+document.addEventListener('keydown', function(e){
+  // input/textarea にフォーカス中は無視
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  var inEditor = !!currentPhotoId && $('view-editor').classList.contains('active');
+  if(!inEditor) return;
+  // Delete / Backspace → 選択中マーカーを削除
+  if((e.key==='Delete'||e.key==='Backspace') && selectedMarkerId){
+    e.preventDefault(); deleteMarker(selectedMarkerId);
+  }
+  // Escape → 選択解除
+  if(e.key==='Escape'){ selectedMarkerId=null; renderMarkers(); }
+  // Ctrl+Z → Undo（undoStack は Fix8 で追加）
+  if((e.ctrlKey||e.metaKey) && e.key==='z'){ e.preventDefault(); undoMarker(); }
+});
 </script>
 </body>
 </html>
